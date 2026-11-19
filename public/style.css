@@ -161,3 +161,11 @@ body.busy .spinner { display: inline-block; }
   .spinner { border-top-color: #7ee19a; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+
+/* Team and player shirts, sized to the text line. */
+.shirt { height: 18px; width: auto; vertical-align: middle; margin-right: 6px; }
+
+/* Subtle difficulty tint on fixture cells. */
+.tint-easy { background: rgba(26, 127, 55, 0.14); }
+.tint-hard { background: rgba(179, 38, 30, 0.14); }
