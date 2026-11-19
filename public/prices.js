@@ -1,4 +1,4 @@
-/* prices.js: transfers and recorded price changes. Starts on fpl:ready from app.js. */
+/* prices.js: transfers and recorded price changes with shirts. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "prices") return;
   const $ = (id) => document.getElementById(id);
@@ -16,9 +16,16 @@
     price: (p) => p.now_cost,
   };
 
-  document.addEventListener("fpl:ready", (e) => init(e.detail));
+  document.addEventListener("fpl:ready", (e) => {
+    if (e.detail) init(e.detail);
+  });
 
   function init(snap) {
+    // Shirt helpers from app.js. Fall back to plain text if they are missing.
+    const F = window.FPL || {};
+    const player = (id, name) => (F.playerHtml ? F.playerHtml(id) : esc(name));
+    const team = (id, short) => (F.teamHtml ? F.teamHtml(id) : esc(short));
+
     const teams = new Map(snap.teams.map((t) => [t.id, t.short]));
     const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
     const filter = $("filter");
@@ -46,9 +53,9 @@
         ? list
             .map(
               (p) => `<tr>
-                <td>${esc(p.web_name)}</td>
-                <td>${esc(teams.get(p.team))}</td>
-                <td>${esc(positions.get(p.element_type))}</td>
+                <td>${player(p.id, p.web_name)}</td>
+                <td>${team(p.team, teams.get(p.team))}</td>
+                <td>${esc(positions.get(p.element_type) ?? "")}</td>
                 <td class="n">${money(p.now_cost)}</td>
                 <td class="n">${signed(p.cost_change_window)}</td>
                 <td class="n">${signed(p.cost_change_start)}</td>
