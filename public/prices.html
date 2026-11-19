@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prices · FPL</title>
+  <meta name="description" content="Fantasy Premier League price changes and transfer activity.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+  <script src="/prices.js" defer></script>
+</head>
+<body data-page="prices">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav id="nav" aria-label="Main"></nav>
+  </header>
+
+  <main>
+    <h1>Prices</h1>
+    <p class="lead">
+      Price changes and transfers as FPL reports them. Transfers are counted for the current gameweek.
+      These are not predictions of future price changes.
+    </p>
+    <p class="meta" id="meta">Loading…</p>
+
+    <div class="controls">
+      <select id="filter" aria-label="Show">
+        <option value="all">All players</option>
+        <option value="rising">Net transfers in</option>
+        <option value="falling">Net transfers out</option>
+        <option value="changed">Price changed recently</option>
+      </select>
+      <select id="pos" aria-label="Position">
+        <option value="0">All positions</option>
+      </select>
+      <select id="sort" aria-label="Sort by">
+        <option value="net">Net transfers</option>
+        <option value="window">Latest change</option>
+        <option value="start">Change since season start</option>
+        <option value="price">Price</option>
+      </select>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Player</th><th>Team</th><th>Pos</th>
+            <th class="n">Price</th><th class="n">Latest change</th><th class="n">Since start</th>
+            <th class="n">In</th><th class="n">Out</th><th class="n">Net</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
+  </footer>
+</body>
+</html>
