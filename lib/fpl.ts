@@ -124,7 +124,16 @@ interface RawBootstrap {
 }
 
 interface RawLive {
-  elements: { id: number; stats: { minutes: number; total_points: number; bps: number; bonus: number } }[];
+  elements: {
+    id: number;
+    stats: {
+      minutes: number;
+      total_points: number;
+      bps: number;
+      bonus: number;
+      defensive_contributions?: number;
+    };
+  }[];
 }
 
 const FPL = "https://fantasy.premierleague.com/api";
@@ -296,7 +305,14 @@ export async function refreshLive(env: Env, gw: number): Promise<void> {
 
   const deltas = data.elements
     .filter((el) => el.stats.minutes > 0 || el.stats.total_points !== 0 || el.stats.bps !== 0)
-    .map((el) => ({ e: el.id, m: el.stats.minutes, p: el.stats.total_points, b: el.stats.bps, bn: el.stats.bonus }))
+    .map((el) => ({
+      e: el.id,
+      m: el.stats.minutes,
+      p: el.stats.total_points,
+      b: el.stats.bps,
+      bn: el.stats.bonus,
+      dc: el.stats.defensive_contributions ?? null, // null means FPL did not send it
+    }))
     .sort((a, b) => a.e - b.e);
 
   const hash = await sha256(JSON.stringify(deltas));
