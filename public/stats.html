@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Stats · FPL</title>
+  <meta name="description" content="Fantasy Premier League player statistics for the season.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+  <script src="/stats.js" defer></script>
+</head>
+<body data-page="stats">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav id="nav" aria-label="Main"></nav>
+  </header>
+
+  <main>
+    <h1>Stats</h1>
+    <p class="meta" id="meta">Loading…</p>
+
+    <div class="controls">
+      <select id="stat" aria-label="Rank by"></select>
+      <select id="pos" aria-label="Position">
+        <option value="0">All positions</option>
+      </select>
+      <select id="mins" aria-label="Minutes played"></select>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="n">#</th><th>Player</th><th>Team</th><th>Pos</th>
+            <th class="n" id="valh">Value</th>
+            <th class="n">Mins</th><th class="n">Goals</th><th class="n">Assists</th>
+            <th class="n">xG</th><th class="n">xA</th><th class="n">ICT</th>
+            <th class="n">CS</th><th class="n">Points</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
+  </footer>
+</body>
+</html>
