@@ -1,4 +1,4 @@
-/* app.js: shared nav, snapshot cache, players, fixtures, login, my team, live updates. */
+/* app.js: shared nav, loading spinner, snapshot cache, players, fixtures, login, my team, live updates. */
 (() => {
   const page = document.body.dataset.page;
   const $ = (id) => document.getElementById(id);
@@ -8,6 +8,24 @@
   const SESSION = "fpl.session";
   const SNAP = "fpl.snapshot";
   const HASH = "fpl.hash";
+
+  // ---------- Loading spinner ----------
+  // Counts in-flight API requests. Background checks (live, version) are ignored,
+  // so the spinner doesn't flash every minute during matches.
+  let pending = 0;
+  const setBusy = (delta) => {
+    pending = Math.max(0, pending + delta);
+    document.body.classList.toggle("busy", pending > 0);
+  };
+
+  const realFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    const tracked = url.includes("/api/") && !/\/api\/(live|version)/.test(url);
+    if (!tracked) return realFetch(input, init);
+    setBusy(1);
+    return realFetch(input, init).finally(() => setBusy(-1));
+  };
 
   // ---------- Session ----------
   const expiry = (token) => {
@@ -34,8 +52,6 @@
 
   // ---------- Nav: one definition for every page ----------
   const LINKS = [
-    { href: "/", label: "Players", key: "players" },
-    { href: "/fixtures", label: "Fixtures", key: "fixtures" },
     { href: "/games", label: "Games", key: "games" },
     { href: "/prices", label: "Prices", key: "prices" },
     { href: "/stats", label: "Stats", key: "stats" },
@@ -52,7 +68,10 @@
     const links = LINKS.filter((l) => l.signedIn === undefined || l.signedIn === !!session)
       .map((l) => `<a href="${l.href}"${here === l.key ? ' aria-current="page"' : ""}>${l.label}</a>`)
       .join("");
-    nav.innerHTML = links + (session ? `<button type="button" id="signout">Sign out</button>` : "");
+    nav.innerHTML =
+      links +
+      (session ? `<button type="button" id="signout">Sign out</button>` : "") +
+      `<span class="spinner" role="status" aria-label="Loading"></span>`;
     $("signout")?.addEventListener("click", signOut);
   }
 
