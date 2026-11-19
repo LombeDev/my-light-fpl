@@ -1,4 +1,4 @@
-/* stats.js: season leaderboards with shirts. Starts on fpl:ready from app.js. */
+/* stats.js: season leaderboards with shirts, and double and blank gameweeks. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "stats") return;
   const $ = (id) => document.getElementById(id);
@@ -79,5 +79,70 @@
     posSel.addEventListener("change", render);
     minSel.addEventListener("change", render);
     render();
+    renderFixtureLoad(snap);
+  }
+
+  // Double and blank gameweeks from the fixture list, with squad players affected.
+  function renderFixtureLoad(snap) {
+    const F = window.FPL;
+    const max = snap.events.length || 38;
+    const from = F.gw;
+    const short = new Map(snap.teams.map((t) => [t.id, t.short]));
+
+    const perTeam = new Map(); // "team:gw" -> number of fixtures
+    const gwsWithFixtures = new Set();
+    for (const f of snap.fixtures) {
+      if (f.gw === null) continue;
+      gwsWithFixtures.add(f.gw);
+      for (const t of [f.home, f.away]) {
+        const k = `${t}:${f.gw}`;
+        perTeam.set(k, (perTeam.get(k) ?? 0) + 1);
+      }
+    }
+
+    const playersByTeam = new Map();
+    for (const p of snap.players) {
+      playersByTeam.set(p.team, (playersByTeam.get(p.team) ?? 0) + 1);
+    }
+    const countPlayers = (ids) => ids.reduce((sum, id) => sum + (playersByTeam.get(id) ?? 0), 0);
+    const names = (ids) => ids.map((id) => short.get(id)).join(", ") || "–";
+
+    const rows = [];
+    for (let g = from; g <= max; g++) {
+      if (!gwsWithFixtures.has(g)) continue;
+      const dbl = [];
+      const blank = [];
+      for (const t of snap.teams) {
+        const n = perTeam.get(`${t.id}:${g}`) ?? 0;
+        if (n >= 2) dbl.push(t.id);
+        else if (n === 0) blank.push(t.id);
+      }
+      if (!dbl.length && !blank.length) continue;
+
+      rows.push(`<tr>
+        <td>GW${g}</td>
+        <td>${esc(names(dbl))}</td>
+        <td>${esc(names(blank))}</td>
+        <td class="n">${countPlayers(dbl)}</td>
+        <td class="n">${countPlayers(blank)}</td>
+      </tr>`);
+    }
+
+    const sec = document.createElement("section");
+    sec.innerHTML = `
+      <h2>Double and blank gameweeks</h2>
+      <p class="meta">Player counts include every squad player in the affected teams, for upcoming gameweeks.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Gameweek</th><th>Double teams</th><th>Blank teams</th>
+              <th class="n">Players in DGW</th><th class="n">Players in BGW</th>
+            </tr>
+          </thead>
+          <tbody>${rows.length ? rows.join("") : `<tr><td colspan="5">No double or blank gameweeks ahead.</td></tr>`}</tbody>
+        </table>
+      </div>`;
+    document.querySelector("main").append(sec);
   }
 })();
