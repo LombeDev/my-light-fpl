@@ -1,6 +1,7 @@
 import { ensureLive, ensureSnapshot, ensureState, getEntry, json, type Bg, type Env, type Meta } from "../../lib/fpl";
-import { challenge, login, me } from "../../lib/auth";
+import { challenge, login, me, myLeagues } from "../../lib/auth";
 import { league } from "../../lib/leagues";
+import { managers } from "../../lib/managers";
 
 const raw = (body: string, cacheControl: string): Response =>
   new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": cacheControl } });
@@ -34,6 +35,8 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       }
 
       if (path === "me") return await me(request, env);
+      if (path === "me/leagues") return await myLeagues(request, env);
+      if (path === "managers") return await managers(request, env);
 
       const pm = /^picks\/(\d{1,9})\/(\d{1,2})$/.exec(path);
       if (pm) {
