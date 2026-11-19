@@ -1,33 +1,37 @@
-/* planner.js: squad builder with shirts and fixture difficulty. Starts on fpl:ready from app.js. */
+/* planner.js: squad builder, transfers with hit cost, fixture difficulty and fixtures. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "planner") return;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
 
-  const KEY = "fpl.squad";
+  const KEY = "fpl.squad";        // planned squad
+  const BASE = "fpl.baseline";    // current team, used for transfers
+  const FT_KEY = "fpl.ft";        // free transfers
   const SESSION = "fpl.session";
   const BUDGET = 1000; // tenths of a million
   const SIZE = 15;
   const QUOTA = { 1: 2, 2: 5, 3: 5, 4: 3 }; // element_type: count
   const CLUB_MAX = 3;
+  const HIT = 4;
 
-  let F; // shirt and FDR helpers from app.js
+  let F;
   let snap;
   let byId;
   let positions;
   let horizon = 5;
   let fixtureMap = new Map(); // team id -> [{ opp, home, diff }]
   let squad = [];
+  let baseline = [];
 
-  const readSquad = () => {
+  const readList = (key) => {
     try {
-      return JSON.parse(localStorage.getItem(KEY)) ?? [];
+      return JSON.parse(localStorage.getItem(key)) ?? [];
     } catch {
       return [];
     }
   };
-  const saveSquad = () => localStorage.setItem(KEY, JSON.stringify(squad));
+  const saveList = (key, list) => localStorage.setItem(key, JSON.stringify(list));
 
   const readSession = () => {
     try {
@@ -52,7 +56,6 @@
 
   // ---------- Fixture difficulty ----------
   // Each team's next `n` unfinished fixtures, in kickoff order.
-  // Double gameweeks add two entries, blank gameweeks add none.
   function buildFixtures(n) {
     const upcoming = snap.fixtures
       .filter((f) => !f.finished && f.kickoff)
@@ -87,14 +90,12 @@
     return avg === null ? Number.POSITIVE_INFINITY : avg;
   };
 
-  // Average FDR cell, tinted with the same scale as the Fixtures page.
   function fdrCell(teamId) {
     const { avg } = fdrOf(teamId);
     if (avg === null) return `<td class="n">–</td>`;
     return `<td class="n ${F.fdr(Math.round(avg))}">${avg.toFixed(1)}</td>`;
   }
 
-  // Each upcoming opponent as a tinted chip, e.g. [shirt] ARS H.
   function nextCell(teamId) {
     const { list } = fdrOf(teamId);
     if (!list.length) return `<td class="muted">No fixtures</td>`;
@@ -103,12 +104,12 @@
       .join("")}</td>`;
   }
 
-  // Average of each squad player's team FDR.
   function squadFdr() {
     const avgs = squad.map((id) => fdrOf(byId.get(id).team).avg).filter((v) => v !== null);
     return avgs.length ? avgs.reduce((s, v) => s + v, 0) / avgs.length : null;
   }
 
+  // ---------- Init ----------
   document.addEventListener("fpl:ready", (e) => {
     if (e.detail) init(e.detail);
   });
@@ -118,13 +119,15 @@
     F = window.FPL;
     byId = new Map(snap.players.map((p) => [p.id, p]));
     positions = new Map(snap.positions.map((p) => [p.id, p.short]));
-    squad = readSquad().filter((id) => byId.has(id)).slice(0, SIZE);
+    squad = readList(KEY).filter((id) => byId.has(id)).slice(0, SIZE);
+    baseline = readList(BASE).filter((id) => byId.has(id)).slice(0, SIZE);
 
     snap.positions.forEach((p) => $("pos").append(new Option(p.short, String(p.id))));
     buildFixtures(horizon);
 
     const session = readSession();
     $("import").hidden = !session;
+    $("ft").value = localStorage.getItem(FT_KEY) ?? "1";
 
     $("horizon").addEventListener("change", (e) => {
       horizon = Number(e.target.value);
@@ -132,11 +135,21 @@
       render();
     });
     $("import").addEventListener("click", () => importSquad(session));
-    $("clear").addEventListener("click", () => {
-      squad = [];
-      saveSquad();
+    $("setbase").addEventListener("click", () => {
+      baseline = squad.slice();
+      saveList(BASE, baseline);
       render();
     });
+    $("clear").addEventListener("click", () => {
+      squad = [];
+      saveList(KEY, squad);
+      render();
+    });
+    $("ft").addEventListener("change", () => {
+      localStorage.setItem(FT_KEY, $("ft").value);
+      renderTransfers();
+    });
+    $("fx-len").addEventListener("change", renderFixtures);
     $("q").addEventListener("input", renderPool);
     $("pos").addEventListener("change", renderPool);
     $("sort").addEventListener("change", renderPool);
@@ -145,7 +158,7 @@
       const id = Number(e.target.dataset.remove);
       if (!id) return;
       squad = squad.filter((x) => x !== id);
-      saveSquad();
+      saveList(KEY, squad);
       render();
     });
 
@@ -153,17 +166,19 @@
       const id = Number(e.target.dataset.add);
       if (!id || blockReason(byId.get(id))) return;
       squad.push(id);
-      saveSquad();
+      saveList(KEY, squad);
       render();
     });
 
     $("meta").textContent = `Prices as of ${new Date(snap.generatedAt).toLocaleString()}`;
     render();
+    renderFixtures();
   }
 
   function render() {
     renderSummary();
     renderSquad();
+    renderTransfers();
     renderPool();
   }
 
@@ -206,6 +221,82 @@
       : `<tr><td colspan="7">No players yet. Add players below or import your squad.</td></tr>`;
   }
 
+  // ---------- Transfers ----------
+  function renderTransfers() {
+    const box = $("transfers");
+    if (!baseline.length) {
+      box.innerHTML = `<p class="meta">Set your current team first. Use <strong>Import my squad</strong> when signed in, or <strong>Use this squad as my team</strong> with the squad you have now.</p>`;
+      return;
+    }
+
+    const outs = baseline.filter((id) => !squad.includes(id));
+    const ins = squad.filter((id) => !baseline.includes(id));
+    const made = Math.max(outs.length, ins.length);
+    const ft = Number($("ft").value);
+    const hits = Math.max(0, made - ft);
+    const cost = hits * HIT;
+
+    const rows = Array.from({ length: made }, (_, i) => {
+      const o = outs[i];
+      const n = ins[i];
+      return `<tr>
+        <td>${o ? F.playerHtml(o) : ""}</td>
+        <td>${n ? F.playerHtml(n) : ""}</td>
+      </tr>`;
+    }).join("");
+
+    box.innerHTML = `
+      <p>
+        <strong>${made}</strong> transfer${made === 1 ? "" : "s"} · ${ft} free ·
+        ${hits} hit${hits === 1 ? "" : "s"}${cost ? ` = <strong>−${cost} pts</strong>` : " = no cost"}
+      </p>
+      ${
+        made
+          ? `<div class="table-wrap"><table>
+               <thead><tr><th>Out</th><th>In</th></tr></thead>
+               <tbody>${rows}</tbody>
+             </table></div>`
+          : `<p class="meta">No changes from your current team.</p>`
+      }
+      <p class="meta">Each hit costs 4 points. Set free transfers to what you have available.</p>
+    `;
+  }
+
+  // ---------- Fixtures ----------
+  function renderFixtures() {
+    const max = snap.events.length || 38;
+    const from = F.gw;
+    const to = Math.min(max, from + Number($("fx-len").value) - 1);
+    const fmt = (iso) =>
+      iso
+        ? new Date(iso).toLocaleString(undefined, {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "TBC";
+
+    const items = snap.fixtures
+      .filter((f) => f.gw !== null && f.gw >= from && f.gw <= to)
+      .sort((a, b) => a.gw - b.gw || (a.kickoff ?? "").localeCompare(b.kickoff ?? ""));
+
+    $("fx-rows").innerHTML = items.length
+      ? items
+          .map((f) => {
+            const mid = f.started || f.finished ? `${f.home_score ?? 0} – ${f.away_score ?? 0}` : fmt(f.kickoff);
+            return `<tr>
+              <td class="r ${F.fdr(f.home_difficulty)}">${F.teamHtml(f.home)}</td>
+              <td class="c"><span class="muted">GW${f.gw}</span><br>${esc(mid)}</td>
+              <td class="${F.fdr(f.away_difficulty)}">${F.teamHtml(f.away)}</td>
+            </tr>`;
+          })
+          .join("")
+      : `<tr><td colspan="3">No fixtures in this range.</td></tr>`;
+  }
+
+  // ---------- Pool ----------
   function renderPool() {
     const needle = $("q").value.trim().toLowerCase();
     const posId = Number($("pos").value);
@@ -245,6 +336,7 @@
       : `<tr><td colspan="8">No players match.</td></tr>`;
   }
 
+  // ---------- Import from FPL ----------
   async function importSquad(session) {
     if (!session) return;
     $("meta").textContent = "Importing…";
@@ -254,8 +346,11 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-      squad = data.picks.map((p) => p.element).filter((id) => byId.has(id)).slice(0, SIZE);
-      saveSquad();
+      const ids = data.picks.map((p) => p.element).filter((id) => byId.has(id)).slice(0, SIZE);
+      squad = ids.slice();
+      baseline = ids.slice();
+      saveList(KEY, squad);
+      saveList(BASE, baseline);
       render();
       $("meta").textContent = `Imported your squad for gameweek ${gw}.`;
     } catch (err) {
