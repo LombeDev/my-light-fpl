@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mini-leagues · FPL</title>
+  <meta name="description" content="Fantasy Premier League mini-league standings.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+  <script src="/leagues.js" defer></script>
+</head>
+<body data-page="leagues">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav>
+      <a href="/">Players</a>
+      <a href="/fixtures">Fixtures</a>
+      <a href="/leagues" aria-current="page">Leagues</a>
+      <a href="/team" id="nav-team" hidden>My team</a>
+      <a href="/login" id="nav-login">Log in</a>
+      <button type="button" id="signout" hidden>Sign out</button>
+    </nav>
+  </header>
+
+  <main>
+    <h1 id="title">Mini-leagues</h1>
+
+    <form id="find" class="controls">
+      <label class="sr" for="id">League ID</label>
+      <input id="id" inputmode="numeric" placeholder="League ID" autocomplete="off">
+      <button type="submit">View</button>
+    </form>
+
+    <p class="meta" id="meta">
+      Enter a classic league ID. It appears in the address of the league on the official FPL website.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="n">#</th><th>Team</th><th>Manager</th>
+            <th class="n">GW</th><th class="n">Total</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <p class="gw">
+      <button id="prev" type="button" hidden>‹ Previous</button>
+      <button id="next" type="button" hidden>Next ›</button>
+    </p>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
+  </footer>
+</body>
+</html>

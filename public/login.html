@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Log in · FPL</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body data-page="login">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav>
+      <a href="/">Players</a>
+      <a href="/fixtures">Fixtures</a>
+      <a href="/leagues">Leagues</a>
+      <a href="/team" id="nav-team" hidden>My team</a>
+      <a href="/login" id="nav-login" aria-current="page">Log in</a>
+      <button type="button" id="signout" hidden>Sign out</button>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Log in with your FPL team ID</h1>
+    <p class="lead">
+      Your team ID is in the web address of your Points page on the official FPL website.
+      To confirm it's yours, you'll set a one-time code as your team name. We never ask for your FPL password.
+    </p>
+
+    <section class="panel">
+      <label for="entry">FPL team ID</label>
+      <div class="row">
+        <input id="entry" inputmode="numeric" autocomplete="off">
+        <button id="start" type="button">Continue</button>
+      </div>
+    </section>
+
+    <section id="step2" class="panel" hidden>
+      <p>1. On the official FPL website, change your team name to include this code:</p>
+      <p class="code" id="code"></p>
+      <p><button id="copy" type="button">Copy code</button></p>
+      <p>2. Come back here and press Verify. You can change your team name back afterwards.</p>
+      <p><button id="verify" type="button">Verify</button></p>
+    </section>
+
+    <p id="msg" class="msg" role="status"></p>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
+  </footer>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Manager · FPL</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+  <script src="/leagues.js" defer></script>
+</head>
+<body data-page="manager">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav>
+      <a href="/">Players</a>
+      <a href="/fixtures">Fixtures</a>
+      <a href="/leagues">Leagues</a>
+      <a href="/team" id="nav-team" hidden>My team</a>
+      <a href="/login" id="nav-login">Log in</a>
+      <button type="button" id="signout" hidden>Sign out</button>
+    </nav>
+  </header>
+
+  <main>
+    <p><a href="/leagues">‹ Back to leagues</a></p>
+    <h1 id="title">Manager</h1>
+    <section id="content">
+      <p class="meta">Loading…</p>
+    </section>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
+  </footer>
+</body>
+</html>
