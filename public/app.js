@@ -1,4 +1,4 @@
-/* app.js: one script for every page. Plain ES2020, no build step. */
+/* app.js: shared nav, snapshot cache, players, fixtures, login, my team, live updates. */
 (() => {
   const page = document.body.dataset.page;
   const $ = (id) => document.getElementById(id);
@@ -9,7 +9,7 @@
   const SNAP = "fpl.snapshot";
   const HASH = "fpl.hash";
 
-  // ---------- Session and nav ----------
+  // ---------- Session ----------
   const expiry = (token) => {
     try {
       return JSON.parse(atob(token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))).exp;
@@ -32,16 +32,28 @@
     location.assign("/login");
   };
 
-  function setupNav() {
-    const team = $("nav-team");
-    const login = $("nav-login");
-    const out = $("signout");
-    if (team) team.hidden = !session;
-    if (login) login.hidden = !!session;
-    if (out) {
-      out.hidden = !session;
-      out.addEventListener("click", signOut);
-    }
+  // ---------- Nav: one definition for every page ----------
+  const LINKS = [
+    { href: "/", label: "Players", key: "players" },
+    { href: "/fixtures", label: "Fixtures", key: "fixtures" },
+    { href: "/games", label: "Games", key: "games" },
+    { href: "/prices", label: "Prices", key: "prices" },
+    { href: "/stats", label: "Stats", key: "stats" },
+    { href: "/planner", label: "Planner", key: "planner" },
+    { href: "/leagues", label: "Leagues", key: "leagues" },
+    { href: "/team", label: "My team", key: "team", signedIn: true },
+    { href: "/login", label: "Log in", key: "login", signedIn: false },
+  ];
+
+  function renderNav() {
+    const nav = $("nav");
+    if (!nav) return;
+    const here = page === "manager" ? "leagues" : page;
+    const links = LINKS.filter((l) => l.signedIn === undefined || l.signedIn === !!session)
+      .map((l) => `<a href="${l.href}"${here === l.key ? ' aria-current="page"' : ""}>${l.label}</a>`)
+      .join("");
+    nav.innerHTML = links + (session ? `<button type="button" id="signout">Sign out</button>` : "");
+    $("signout")?.addEventListener("click", signOut);
   }
 
   // ---------- API ----------
@@ -369,9 +381,7 @@
                <h2>Bench</h2>${table(picks.picks.filter((x) => x.position > 11))}`
             : `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`
         }
-        <p><button id="signout-main" type="button">Sign out</button></p>
       `;
-      $("signout-main").addEventListener("click", signOut);
     } catch (err) {
       if (err.status === 401) return signOut();
       out.textContent = `Could not load your team. ${err.message}`;
@@ -385,7 +395,7 @@
     const key = `${entry}:${gw}`;
     if (!picksCache.has(key)) {
       const p = api(`/picks/${entry}/${gw}`);
-      p.catch(() => picksCache.delete(key)); // allow a retry on the next hover
+      p.catch(() => picksCache.delete(key));
       picksCache.set(key, p);
     }
     return picksCache.get(key);
@@ -402,16 +412,19 @@
 
   // ---------- Boot ----------
   (async () => {
-    setupNav();
+    renderNav();
 
     if (page === "login") return initLogin();
     if (page === "team") return initTeam();
+    if (page === "leagues" || page === "manager") return; // leagues.js handles these
 
     try {
       const snap = await loadSnapshot();
       if (page === "players") initPlayers(snap);
       if (page === "fixtures") initFixtures(snap);
       initPrefetch(currentGw(snap));
+      // Other page scripts (games, prices, stats, planner) start here.
+      document.dispatchEvent(new CustomEvent("fpl:ready", { detail: snap }));
     } catch (err) {
       const el = $("meta") || $("gw");
       if (el) el.textContent = `Could not load data. ${err.message}`;
