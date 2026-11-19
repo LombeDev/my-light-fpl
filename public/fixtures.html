@@ -3,58 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Players · FPL</title>
-  <meta name="description" content="Fantasy Premier League players, prices, form and ownership.">
+  <title>Fixtures · FPL</title>
+  <meta name="description" content="Fantasy Premier League fixtures by gameweek.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
-<body data-page="players">
+<body data-page="fixtures">
   <header class="site">
     <a class="brand" href="/">FPL</a>
-    <nav>
-      <a href="/" aria-current="page">Players</a>
-      <a href="/fixtures">Fixtures</a>
-      <a href="/leagues">Leagues</a>
-      <a href="/team" id="nav-team" hidden>My team</a>
-      <a href="/login" id="nav-login">Log in</a>
-      <button type="button" id="signout" hidden>Sign out</button>
-    </nav>
+    <nav id="nav" aria-label="Main"></nav>
   </header>
 
   <main>
-    <h1>Players</h1>
-    <p class="meta" id="meta">Loading…</p>
+    <h1>Fixtures</h1>
 
-    <div class="controls">
-      <input id="q" type="search" placeholder="Search players" aria-label="Search players">
-      <select id="pos" aria-label="Position">
-        <option value="0">All positions</option>
-      </select>
-      <select id="sort" aria-label="Sort by">
-        <option value="points">Total points</option>
-        <option value="form">Form</option>
-        <option value="price">Price</option>
-        <option value="owned">Ownership</option>
-        <option value="xg">Expected goals</option>
-        <option value="ppm">Points per £m</option>
-      </select>
+    <div class="gw">
+      <button id="prev" type="button" aria-label="Previous gameweek">‹ Prev</button>
+      <strong id="gw">Loading…</strong>
+      <button id="next" type="button" aria-label="Next gameweek">Next ›</button>
     </div>
 
     <div class="table-wrap">
       <table>
         <thead>
-          <tr>
-            <th>Player</th><th>Team</th><th>Pos</th>
-            <th class="n">Price</th><th class="n">Total</th>
-            <th class="n">GW</th><th class="n">Mins</th><th class="n">BPS</th>
-            <th class="n">Form</th><th class="n">Owned</th><th class="n">xG</th>
-          </tr>
+          <tr><th class="r">Home</th><th class="c">Score / kick-off</th><th>Away</th></tr>
         </thead>
-        <tbody id="rows"></tbody>
+        <tbody id="list"></tbody>
       </table>
     </div>
-
-    <p><button id="more" type="button" hidden>Show more</button></p>
   </main>
 
   <footer>
