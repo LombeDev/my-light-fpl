@@ -1,4 +1,4 @@
-/* app.js: shared nav, centred spinner, snapshot cache, shirts, players, fixtures, login, my team, live updates. */
+/* app.js: nav, spinner, snapshot cache, shirts, live updates, players, fixtures, season ticker, my team, login. */
 (() => {
   const page = document.body.dataset.page;
   const $ = (id) => document.getElementById(id);
@@ -10,15 +10,14 @@
   const HASH = "fpl.hash";
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
 
-  // ---------- Spinner: one centred element on every page ----------
+  // ---------- Spinner ----------
   const spinner = document.createElement("div");
   spinner.className = "spinner";
   spinner.setAttribute("role", "status");
   spinner.setAttribute("aria-label", "Loading");
   document.body.append(spinner);
 
-  // Counts in-flight API requests. Background checks (live, version) are ignored,
-  // so the spinner doesn't flash every minute during matches.
+  // Counts in-flight API requests. Background checks (live, version) are ignored.
   let pending = 0;
   const setBusy = (delta) => {
     pending = Math.max(0, pending + delta);
@@ -57,7 +56,7 @@
     location.assign("/login");
   };
 
-  // ---------- Nav: one definition for every page ----------
+  // ---------- Nav ----------
   const LINKS = [
     { href: "/games", label: "Games", key: "games" },
     { href: "/prices", label: "Prices", key: "prices" },
@@ -125,14 +124,12 @@
   const shirtImg = (code, goalkeeper = false) =>
     `<img class="shirt" src="${SHIRTS}/shirt_${code}${goalkeeper ? "_1" : ""}-66.png" alt="" loading="lazy">`;
 
-  // A club's shirt and short name, e.g. "[shirt] ARS".
   const teamHtml = (id) => {
     const t = teamInfo.get(id);
     if (!t) return "";
     return `${t.code ? shirtImg(t.code) : ""}<span>${esc(t.short)}</span>`;
   };
 
-  // A player's shirt and name. Goalkeepers get the goalkeeper shirt.
   const playerHtml = (id) => {
     const p = playerInfo.get(id);
     if (!p) return "";
@@ -146,7 +143,7 @@
 
   // ---------- Live updates ----------
   let liveHash = null;
-  let liveDeltas = [];
+  let liveMap = new Map(); // player id -> live delta
 
   function put(tr, field, value) {
     const cell = tr.querySelector(`[data-f="${field}"]`);
@@ -155,10 +152,9 @@
   }
 
   function applyLive() {
-    if (!liveDeltas.length) return;
-    const byId = new Map(liveDeltas.map((d) => [d.e, d]));
+    if (!liveMap.size) return;
     document.querySelectorAll("tr[data-el]").forEach((tr) => {
-      const d = byId.get(Number(tr.dataset.el));
+      const d = liveMap.get(Number(tr.dataset.el));
       if (!d) return;
       put(tr, "p", d.p);
       put(tr, "m", d.m);
@@ -175,6 +171,7 @@
     });
   }
 
+  // Runs on every page. Only fetches during match windows and while the tab is visible.
   function startLive(snap) {
     const tick = async () => {
       if (document.hidden || !inMatchWindow(snap)) return;
@@ -182,8 +179,9 @@
         const d = await api("/live");
         if (d.hash && d.hash !== liveHash) {
           liveHash = d.hash;
-          liveDeltas = d.deltas;
+          liveMap = new Map(d.deltas.map((x) => [x.e, x]));
           applyLive();
+          document.dispatchEvent(new CustomEvent("fpl:live"));
         }
       } catch {
         /* try again on the next tick */
@@ -266,9 +264,9 @@
       limit += STEP;
       render();
     });
+    document.addEventListener("fpl:live", applyLive);
 
     render();
-    startLive(snap);
   }
 
   // ---------- Fixtures ----------
@@ -323,6 +321,73 @@
       draw();
     });
 
+    draw();
+    initTicker(snap);
+  }
+
+  // Season ticker: each team's opponents across upcoming gameweeks, tinted by FDR.
+  function initTicker(snap) {
+    const main = document.querySelector("main");
+    if (!main) return;
+    const max = snap.events.length || 38;
+    const start = currentGw(snap);
+    const shortOf = (id) => teamInfo.get(id)?.short ?? "";
+
+    const sec = document.createElement("section");
+    sec.innerHTML = `
+      <h2>Season ticker</h2>
+      <p class="meta">Each cell shows the opponent and venue (H or A), tinted by difficulty. Double gameweeks show two opponents.</p>
+      <div class="controls">
+        <label for="tk-len">Show</label>
+        <select id="tk-len">
+          <option value="5">next 5 gameweeks</option>
+          <option value="10" selected>next 10 gameweeks</option>
+          <option value="all">all remaining</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table class="ticker">
+          <thead id="tk-head"></thead>
+          <tbody id="tk-body"></tbody>
+        </table>
+      </div>`;
+    main.append(sec);
+
+    const grid = new Map(); // "team:gw" -> [{ opp, home, diff }]
+    for (const f of snap.fixtures) {
+      if (f.gw === null || f.gw < start) continue;
+      const push = (team, opp, home, diff) => {
+        const k = `${team}:${f.gw}`;
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k).push({ opp, home, diff });
+      };
+      push(f.home, f.away, true, f.home_difficulty);
+      push(f.away, f.home, false, f.away_difficulty);
+    }
+
+    const draw = () => {
+      const choice = $("tk-len").value;
+      const count = choice === "all" ? max - start + 1 : Number(choice);
+      const gws = Array.from({ length: Math.min(count, max - start + 1) }, (_, i) => start + i);
+
+      $("tk-head").innerHTML = `<tr><th>Team</th>${gws.map((g) => `<th class="c">GW${g}</th>`).join("")}</tr>`;
+      $("tk-body").innerHTML = [...snap.teams]
+        .sort((a, b) => a.short.localeCompare(b.short))
+        .map(
+          (t) => `<tr><td>${teamHtml(t.id)}</td>${gws
+            .map((g) => {
+              const list = grid.get(`${t.id}:${g}`) ?? [];
+              if (!list.length) return `<td class="c muted">Blank</td>`;
+              return `<td class="c">${list
+                .map((x) => `<span class="chip ${fdr(x.diff)}">${esc(shortOf(x.opp))} ${x.home ? "H" : "A"}</span>`)
+                .join("<br>")}</td>`;
+            })
+            .join("")}</tr>`,
+        )
+        .join("");
+    };
+
+    $("tk-len").addEventListener("change", draw);
     draw();
   }
 
@@ -380,7 +445,7 @@
     });
   }
 
-  // ---------- My team ----------
+  // ---------- My team (live) ----------
   async function initTeam(snap) {
     const out = $("content");
     if (!session) return signOut();
@@ -390,43 +455,76 @@
       const gw = currentGw(snap);
       const picks = await api(`/picks/${session.entryId}/${gw}`).catch(() => null);
 
+      const e = me.entry;
+      const rank = e.summary_overall_rank?.toLocaleString() ?? "—";
       const byId = new Map(snap.players.map((p) => [p.id, p]));
       const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
 
-      const table = (list) => `<table>
-        <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th></th></tr></thead>
+      // Live cells: "–" before a match window, 0 for a player with no activity, otherwise the value.
+      const liveCell = (hasLive, d, key) => {
+        if (!hasLive) return "–";
+        if (!d) return 0;
+        const v = d[key];
+        return v === null || v === undefined ? "–" : v;
+      };
+
+      const table = (list, hasLive) => `<table>
+        <thead><tr>
+          <th>Player</th><th>Pos</th>
+          <th class="n">Mins</th><th class="n">Pts</th><th class="n">Bonus</th><th class="n">DC</th>
+          <th>Role</th>
+        </tr></thead>
         <tbody>${list
           .map((pk) => {
             const p = byId.get(pk.element);
+            const d = liveMap.get(pk.element);
             const badge = pk.is_captain ? "Captain" : pk.is_vice_captain ? "Vice" : "";
+            const mult = pk.multiplier ?? 1;
+            const role = [badge, mult > 1 ? `×${mult}` : ""].filter(Boolean).join(" ");
             return `<tr>
               <td>${playerHtml(pk.element)}</td>
-              <td>${p ? teamHtml(p.team) : ""}</td>
-              <td>${p ? esc(positions.get(p.element_type)) : ""}</td>
-              <td>${badge}</td>
+              <td>${esc(p ? positions.get(p.element_type) : "")}</td>
+              <td class="n">${liveCell(hasLive, d, "m")}</td>
+              <td class="n">${liveCell(hasLive, d, "p")}</td>
+              <td class="n">${liveCell(hasLive, d, "bn")}</td>
+              <td class="n">${liveCell(hasLive, d, "dc")}</td>
+              <td>${esc(role)}</td>
             </tr>`;
           })
           .join("")}</tbody>
       </table>`;
 
-      const e = me.entry;
-      const rank = e.summary_overall_rank?.toLocaleString() ?? "—";
-      const gwPts = picks?.entry_history?.points;
-      const gwText = gwPts !== undefined ? ` · GW${gw}: ${gwPts} pts` : "";
+      const render = () => {
+        const hasLive = liveMap.size > 0;
+        const xi = picks ? picks.picks.filter((x) => x.position <= 11) : [];
+        const bench = picks ? picks.picks.filter((x) => x.position > 11) : [];
 
-      out.innerHTML = `
-        <h1>${esc(e.name)}</h1>
-        <p class="meta">
-          ${esc(e.player_first_name)} ${esc(e.player_last_name)} ·
-          ${e.summary_overall_points} pts · rank ${rank}${gwText}
-        </p>
-        ${
-          picks
-            ? `<h2>Starting XI</h2>${table(picks.picks.filter((x) => x.position <= 11))}
-               <h2>Bench</h2>${table(picks.picks.filter((x) => x.position > 11))}`
-            : `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`
-        }
-      `;
+        const liveTotal =
+          hasLive && picks
+            ? xi.reduce((sum, pk) => sum + (liveMap.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1), 0)
+            : null;
+        const total = liveTotal ?? picks?.entry_history?.points;
+        const totalText =
+          total !== undefined ? ` · GW${gw}: ${total} pts${liveTotal !== null ? " (live)" : ""}` : "";
+
+        out.innerHTML = `
+          <h1>${esc(e.name)}</h1>
+          <p class="meta">
+            ${esc(e.player_first_name)} ${esc(e.player_last_name)} ·
+            ${e.summary_overall_points} pts · rank ${rank}${totalText}
+          </p>
+          ${
+            picks
+              ? `<h2>Starting XI</h2>${table(xi, hasLive)}
+                 <h2>Bench</h2>${table(bench, hasLive)}`
+              : `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`
+          }
+          <p class="meta">Live totals include captaincy multipliers. Automatic substitutions and transfer hits are not applied yet.</p>
+        `;
+      };
+
+      render();
+      document.addEventListener("fpl:live", render);
     } catch (err) {
       if (err.status === 401) return signOut();
       out.textContent = `Could not load your team. ${err.message}`;
@@ -458,7 +556,6 @@
   // ---------- Boot ----------
   (async () => {
     renderNav();
-
     if (page === "login") return initLogin();
 
     let snap = null;
@@ -469,10 +566,13 @@
     } catch (err) {
       const message = `Could not load data. ${err.message}`;
       if (page === "team") $("content").textContent = message;
-      else if (page !== "leagues" && page !== "manager") ($("meta") || $("gw") || {}).textContent = message;
+      else if (page !== "leagues" && page !== "manager") {
+        const el = $("meta") || $("gw");
+        if (el) el.textContent = message;
+      }
     }
 
-    window.FPL = { teamHtml, playerHtml, fdr, gw: snap ? currentGw(snap) : 1 };
+    window.FPL = { teamHtml, playerHtml, fdr, gw: snap ? currentGw(snap) : 1, live: () => liveMap };
 
     // Leagues pages always get this event, so their tables still load without the snapshot.
     if (snap || page === "leagues" || page === "manager") {
@@ -480,9 +580,11 @@
     }
     if (!snap) return;
 
+    startLive(snap);
+    initPrefetch(currentGw(snap));
+
     if (page === "team") return initTeam(snap);
     if (page === "players") initPlayers(snap);
     if (page === "fixtures") initFixtures(snap);
-    initPrefetch(currentGw(snap));
   })();
 })();
