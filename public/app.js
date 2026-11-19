@@ -1,4 +1,4 @@
-/* app.js: shared nav, loading spinner, snapshot cache, players, fixtures, login, my team, live updates. */
+/* app.js: shared nav, spinner, snapshot cache, shirts, players, fixtures, login, my team, live updates. */
 (() => {
   const page = document.body.dataset.page;
   const $ = (id) => document.getElementById(id);
@@ -8,6 +8,7 @@
   const SESSION = "fpl.session";
   const SNAP = "fpl.snapshot";
   const HASH = "fpl.hash";
+  const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
 
   // ---------- Loading spinner ----------
   // Counts in-flight API requests. Background checks (live, version) are ignored,
@@ -114,6 +115,32 @@
   const currentGw = (snap) =>
     (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
 
+  // ---------- Shirts and difficulty tint ----------
+  let teamInfo = new Map();
+  let playerInfo = new Map();
+
+  const shirtImg = (code, goalkeeper = false) =>
+    `<img class="shirt" src="${SHIRTS}/shirt_${code}${goalkeeper ? "_1" : ""}-66.png" alt="" loading="lazy">`;
+
+  // FDR: 1 to 2 is easy (green tint), 4 to 5 is hard (red tint), 3 is neutral.
+  const FDR_CLASS = (d) => (d <= 2 ? "tint-easy" : d >= 4 ? "tint-hard" : "");
+
+  // A team's shirt and short name.
+  const teamHtml = (id) => {
+    const t = teamInfo.get(id);
+    if (!t) return "";
+    return `${t.code ? shirtImg(t.code) : ""}<span>${esc(t.short)}</span>`;
+  };
+
+  // A player's shirt and name. Element type 1 is goalkeeper, which uses the goalkeeper shirt.
+  const playerHtml = (id) => {
+    const p = playerInfo.get(id);
+    if (!p) return esc("Unknown");
+    const t = teamInfo.get(p.team);
+    const img = t?.code ? shirtImg(t.code, p.element_type === 1) : "";
+    return `${img}<span>${esc(p.web_name)}</span>`;
+  };
+
   // ---------- Live updates ----------
   let liveHash = null;
   let liveDeltas = [];
@@ -190,7 +217,7 @@
     snap.positions.forEach((p) => pos.append(new Option(p.short, String(p.id))));
 
     const rowHtml = (p) => `<tr data-el="${p.id}"${p.status !== "a" ? ' class="dim"' : ""}>
-      <td>${esc(p.web_name)}</td>
+      <td>${playerHtml(p.id)}</td>
       <td>${esc(teams.get(p.team))}</td>
       <td>${esc(positions.get(p.element_type))}</td>
       <td class="n">${money(p.now_cost)}</td>
@@ -244,7 +271,6 @@
 
   // ---------- Fixtures ----------
   function initFixtures(snap) {
-    const teams = new Map(snap.teams.map((t) => [t.id, t.short]));
     const max = snap.events.length || 38;
     const fromUrl = Number(new URLSearchParams(location.search).get("gw"));
     let gw = fromUrl >= 1 && fromUrl <= max ? fromUrl : currentGw(snap);
@@ -275,9 +301,9 @@
               const score =
                 f.started || f.finished ? `${f.home_score ?? 0} – ${f.away_score ?? 0}` : fmt(f.kickoff);
               return `<tr>
-                <td class="r">${esc(teams.get(f.home))}</td>
+                <td class="r ${FDR_CLASS(f.home_difficulty)}">${teamHtml(f.home)}</td>
                 <td class="c">${esc(score)}</td>
-                <td>${esc(teams.get(f.away))}</td>
+                <td class="${FDR_CLASS(f.away_difficulty)}">${teamHtml(f.away)}</td>
               </tr>`;
             })
             .join("")
@@ -374,7 +400,7 @@
             const p = byId.get(pk.element);
             const badge = pk.is_captain ? "Captain" : pk.is_vice_captain ? "Vice" : "";
             return `<tr>
-              <td>${esc(p?.web_name ?? "Unknown")}</td>
+              <td>${playerHtml(pk.element)}</td>
               <td>${esc(p ? teams.get(p.team) : "")}</td>
               <td>${esc(p ? positions.get(p.element_type) : "")}</td>
               <td>${badge}</td>
@@ -439,6 +465,10 @@
 
     try {
       const snap = await loadSnapshot();
+      teamInfo = new Map(snap.teams.map((t) => [t.id, t]));
+      playerInfo = new Map(snap.players.map((p) => [p.id, p]));
+      window.FPL = { teamHtml, playerHtml, FDR_CLASS };
+
       if (page === "players") initPlayers(snap);
       if (page === "fixtures") initFixtures(snap);
       initPrefetch(currentGw(snap));
