@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Planner · FPL</title>
+  <meta name="description" content="Plan a Fantasy Premier League squad within the budget and rules.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+  <script src="/planner.js" defer></script>
+</head>
+<body data-page="planner">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav id="nav" aria-label="Main"></nav>
+  </header>
+
+  <main>
+    <h1>Squad planner</h1>
+    <p class="lead">
+      Build a 15-player squad within £100.0m: two goalkeepers, five defenders, five midfielders,
+      three forwards, and no more than three players from one club. Your squad is saved on this device.
+    </p>
+    <p class="meta" id="meta">Loading…</p>
+    <p id="summary"></p>
+
+    <div class="controls">
+      <label for="horizon">Fixture difficulty over</label>
+      <select id="horizon" aria-label="Fixtures to rate">
+        <option value="3">next 3 games</option>
+        <option value="5" selected>next 5 games</option>
+        <option value="8">next 8 games</option>
+      </select>
+    </div>
+    <p class="meta">FDR runs from 1 (easiest) to 5 (hardest). Green is 2.5 or below, red is 3.5 or above.</p>
+
+    <div class="row">
+      <button id="import" type="button" hidden>Import my squad</button>
+      <button id="clear" type="button">Clear squad</button>
+    </div>
+
+    <h2>Squad</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Player</th><th>Team</th><th>Pos</th><th class="n">Price</th>
+            <th class="n" data-h>FDR</th><th>Next games</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="squad"></tbody>
+      </table>
+    </div>
+
+    <h2>Add players</h2>
+    <div class="controls">
+      <input id="q" type="search" placeholder="Search players" aria-label="Search players">
+      <select id="pos" aria-label="Position">
+        <option value="0">All positions</option>
+      </select>
+      <select id="sort" aria-label="Sort by">
+        <option value="points">Total points</option>
+        <option value="fdr">Easiest fixtures</option>
+        <option value="price">Price</option>
+      </select>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Player</th><th>Team</th><th>Pos</th><th class="n">Price</th>
+            <th class="n">Points</th><th class="n" data-h>FDR</th><th>Next games</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="pool"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
+  </footer>
+</body>
+</html>
