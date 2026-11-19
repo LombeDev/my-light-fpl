@@ -1,30 +1,28 @@
-/* games.js: match results by gameweek with goals and assists. Starts on fpl:ready from app.js. */
+/* games.js: match results by gameweek with shirts for teams and scorers. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "games") return;
   const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
   document.addEventListener("fpl:ready", (e) => init(e.detail));
 
   function init(snap) {
-    const teams = new Map(snap.teams.map((t) => [t.id, t.short]));
-    const names = new Map(snap.players.map((p) => [p.id, p.web_name]));
+    const { teamHtml, playerHtml } = window.FPL;
     const max = snap.events.length || 38;
     const current = snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next);
     const fromUrl = Number(new URLSearchParams(location.search).get("gw"));
     let gw = fromUrl >= 1 && fromUrl <= max ? fromUrl : (current?.id ?? 1);
 
-    // [[playerId, value], ...] becomes "Name, Name ×2".
-    const names_ = (pairs = []) =>
-      pairs.map(([id, v]) => `${esc(names.get(id) ?? "Unknown")}${v > 1 ? ` ×${v}` : ""}`).join(", ");
+    // [[playerId, value], ...] becomes shirt + name, with "×2" for two.
+    const scorers = (pairs = []) =>
+      pairs.map(([id, v]) => `${playerHtml(id)}${v > 1 ? ` ×${v}` : ""}`).join(", ");
 
-    // One line per side: "ARS: Saka, Odegaard" then "CHE: Palmer".
+    // One line per side: team shirt, then its scorers.
     const sides = (f, stat) => {
       const lines = [];
-      const h = names_(f.stats?.[stat]?.h);
-      const a = names_(f.stats?.[stat]?.a);
-      if (h) lines.push(`${esc(teams.get(f.home))}: ${h}`);
-      if (a) lines.push(`${esc(teams.get(f.away))}: ${a}`);
+      const h = scorers(f.stats?.[stat]?.h);
+      const a = scorers(f.stats?.[stat]?.a);
+      if (h) lines.push(`${teamHtml(f.home)}: ${h}`);
+      if (a) lines.push(`${teamHtml(f.away)}: ${a}`);
       return lines.length ? lines.join("<br>") : "–";
     };
 
@@ -44,7 +42,7 @@
         .map((f) => {
           const live = f.finished ? "" : ' <span class="muted">(live)</span>';
           return `<tr>
-            <td>${esc(teams.get(f.home))} v ${esc(teams.get(f.away))}</td>
+            <td>${teamHtml(f.home)} <span class="muted">v</span> ${teamHtml(f.away)}</td>
             <td class="c">${f.home_score ?? 0} – ${f.away_score ?? 0}${live}</td>
             <td>${sides(f, "goals_scored")}</td>
             <td>${sides(f, "assists")}</td>
