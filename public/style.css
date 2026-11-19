@@ -226,3 +226,13 @@ nav button:hover {
 
 .brand,
 .brand:hover { text-decoration: none; }
+
+
+/* Phase 1: live and fixture views */
+.ticker td { font-size: 0.85rem; }
+.ticker .c { min-width: 64px; }
+.live { color: #b3261e; font-weight: 700; }
+.bonus-line { margin: 4px 0 14px; }
+@media (prefers-color-scheme: dark) {
+  .live { color: #ffb4ab; }
+}
