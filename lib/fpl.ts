@@ -11,7 +11,9 @@ export interface Meta {
   nextWake: number | null;
 }
 
-interface SlimPlayer {
+export type StatPairs = [number, number][]; // [player id, value]
+
+export interface SlimPlayer {
   id: number;
   web_name: string;
   team: number;
@@ -21,11 +23,22 @@ interface SlimPlayer {
   form: number;
   selected_by_percent: number;
   expected_goals: number;
+  expected_assists: number;
+  ict: number;
+  goals: number;
+  assists: number;
+  clean_sheets: number;
+  minutes: number;
+  bonus: number;
   points_per_million: number;
+  transfers_in: number;
+  transfers_out: number;
+  cost_change_window: number;
+  cost_change_start: number;
   status: string;
 }
 
-interface SlimFixture {
+export interface SlimFixture {
   id: number;
   gw: number | null;
   kickoff: string | null;
@@ -33,8 +46,11 @@ interface SlimFixture {
   away: number;
   home_score: number | null;
   away_score: number | null;
+  home_difficulty: number;
+  away_difficulty: number;
   started: boolean;
   finished: boolean;
+  stats: Record<string, { h: StatPairs; a: StatPairs }>;
 }
 
 export interface Snapshot {
@@ -65,7 +81,24 @@ interface RawElement {
   form: string;
   selected_by_percent: string;
   expected_goals: string;
+  expected_assists: string;
+  ict_index: string;
+  goals_scored: number;
+  assists: number;
+  clean_sheets: number;
+  minutes: number;
+  bonus: number;
+  transfers_in_event: number;
+  transfers_out_event: number;
+  cost_change_event: number;
+  cost_change_start: number;
   status: string;
+}
+
+interface RawStat {
+  identifier: string;
+  h: { element: number; value: number }[];
+  a: { element: number; value: number }[];
 }
 
 interface RawFixture {
@@ -76,8 +109,11 @@ interface RawFixture {
   team_a: number;
   team_h_score: number | null;
   team_a_score: number | null;
+  team_h_difficulty: number;
+  team_a_difficulty: number;
   started: boolean;
   finished: boolean;
+  stats: RawStat[];
 }
 
 interface RawBootstrap {
@@ -94,6 +130,7 @@ interface RawLive {
 const FPL = "https://fantasy.premierleague.com/api";
 const UA = { "User-Agent": "fpl-site/1.0", Accept: "application/json" };
 const MIN = 60_000;
+const KEEP_STATS = new Set(["goals_scored", "assists", "own_goals", "red_cards", "yellow_cards"]);
 
 const num = (v: unknown): number => {
   const n = Number.parseFloat(String(v ?? ""));
@@ -132,10 +169,7 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/**
- * Returns true if `key` has not run within `everyMs` in this data centre, and marks it as run.
- * Uses the Cache API, so it costs no KV writes.
- */
+/** Returns true if `key` has not run within `everyMs` in this data centre, and marks it as run. */
 async function due(key: string, everyMs: number): Promise<boolean> {
   const cache = caches.default;
   const url = `https://throttle.internal/${key}`;
@@ -150,6 +184,18 @@ async function due(key: string, everyMs: number): Promise<boolean> {
 async function maybe(bg: Bg, key: string, everyMs: number, job: () => Promise<void>): Promise<void> {
   if (!(await due(key, everyMs))) return;
   bg.waitUntil(job().catch((err) => console.error(`${key} refresh failed:`, err)));
+}
+
+function slimStats(stats: RawStat[] | undefined): SlimFixture["stats"] {
+  const out: SlimFixture["stats"] = {};
+  for (const s of stats ?? []) {
+    if (!KEEP_STATS.has(s.identifier)) continue;
+    out[s.identifier] = {
+      h: s.h.map((x): [number, number] => [x.element, x.value]),
+      a: s.a.map((x): [number, number] => [x.element, x.value]),
+    };
+  }
+  return out;
 }
 
 // ---------- Refresh jobs ----------
@@ -180,7 +226,18 @@ export async function refreshSnapshot(env: Env): Promise<void> {
         form: round2(num(e.form)),
         selected_by_percent: round2(num(e.selected_by_percent)),
         expected_goals: round2(num(e.expected_goals)),
+        expected_assists: round2(num(e.expected_assists)),
+        ict: round2(num(e.ict_index)),
+        goals: e.goals_scored,
+        assists: e.assists,
+        clean_sheets: e.clean_sheets,
+        minutes: e.minutes,
+        bonus: e.bonus,
         points_per_million: e.now_cost > 0 ? round2((e.total_points * 10) / e.now_cost) : 0,
+        transfers_in: e.transfers_in_event,
+        transfers_out: e.transfers_out_event,
+        cost_change_window: e.cost_change_event,
+        cost_change_start: e.cost_change_start,
         status: e.status,
       }),
     ),
@@ -193,8 +250,11 @@ export async function refreshSnapshot(env: Env): Promise<void> {
         away: f.team_a,
         home_score: f.team_h_score,
         away_score: f.team_a_score,
+        home_difficulty: f.team_h_difficulty,
+        away_difficulty: f.team_a_difficulty,
         started: f.started,
         finished: f.finished,
+        stats: slimStats(f.stats),
       }),
     ),
   };
