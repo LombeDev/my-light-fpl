@@ -30,13 +30,13 @@ interface Transfer {
 
 export interface ManagerDetail {
   entry: number;
-  captain: string;
-  vice: string;
+  captainId: number | null;
+  viceId: number | null;
   chip: string;
   value: number;
   gross: number;
   hit: number;
-  transfers: { out: string; in: string }[];
+  transfers: { outId: number; inId: number }[];
 }
 
 async function get<T>(path: string): Promise<T | null> {
@@ -47,7 +47,7 @@ async function get<T>(path: string): Promise<T | null> {
   return res.ok ? ((await res.json()) as T) : null;
 }
 
-async function detail(entry: number, gw: number, names: Map<number, string>): Promise<ManagerDetail | null> {
+async function detail(entry: number, gw: number): Promise<ManagerDetail | null> {
   const [picks, history, transfers] = await Promise.all([
     get<Picks>(`entry/${entry}/event/${gw}/picks`),
     get<History>(`entry/${entry}/history`),
@@ -55,25 +55,24 @@ async function detail(entry: number, gw: number, names: Map<number, string>): Pr
   ]);
   if (!picks) return null;
 
-  const name = (id: number) => names.get(id) ?? "Unknown";
   const cap = picks.picks.find((p) => p.is_captain);
   const vice = picks.picks.find((p) => p.is_vice_captain);
 
-  // Only use this gameweek's row for the hit, so a finished gameweek's cost is never shown.
+  // Only this gameweek's row, so a finished gameweek's cost is never shown.
   const thisGw = history?.current.find((h) => h.event === gw);
   const latest = history?.current.at(-1);
 
   return {
     entry,
-    captain: cap ? name(cap.element) : "",
-    vice: vice ? name(vice.element) : "",
+    captainId: cap?.element ?? null,
+    viceId: vice?.element ?? null,
     chip: picks.active_chip ? (CHIP[picks.active_chip] ?? picks.active_chip) : "",
     value: latest?.value ?? 0,
     gross: picks.entry_history?.points ?? 0,
     hit: thisGw?.event_transfers_cost ?? 0,
     transfers: (transfers ?? [])
       .filter((t) => t.event === gw)
-      .map((t) => ({ out: name(t.element_out), in: name(t.element_in) })),
+      .map((t) => ({ outId: t.element_out, inId: t.element_in })),
   };
 }
 
@@ -95,8 +94,7 @@ export async function managers(request: Request, env: Env): Promise<Response> {
   const gw = (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next))?.id;
   if (!gw) return json({ error: "No gameweek available." }, 503);
 
-  const names = new Map(snap.players.map((p) => [p.id, p.web_name]));
-  const found = await Promise.all(ids.map((id) => detail(Number(id), gw, names).catch(() => null)));
+  const found = await Promise.all(ids.map((id) => detail(Number(id), gw).catch(() => null)));
 
   return new Response(
     JSON.stringify({ gw, managers: found.filter((m): m is ManagerDetail => m !== null) }),
