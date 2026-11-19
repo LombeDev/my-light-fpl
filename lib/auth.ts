@@ -88,3 +88,29 @@ export async function me(request: Request, env: Env): Promise<Response> {
   if (!entry) return json({ error: "FPL team unavailable." }, 502);
   return json({ entryId: s.id, entry });
 }
+
+interface RawEntryLeagues {
+  leagues?: {
+    classic?: { id: number; name: string; league_type: string; entry_rank: number | null }[];
+  };
+}
+
+export async function myLeagues(request: Request, env: Env): Promise<Response> {
+  if (!configured(env)) return json({ error: "Server misconfigured." }, 500);
+
+  const bearer = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const s = await verify(bearer, env.SECRET);
+  if (!s || s.typ !== "session" || !s.id) return json({ error: "Not signed in." }, 401);
+
+  const res = await fetch(`https://fantasy.premierleague.com/api/entry/${s.id}/`, {
+    headers: { "User-Agent": "fpl-site/1.0", Accept: "application/json" },
+  });
+  if (!res.ok) return json({ error: "FPL team unavailable." }, 502);
+
+  const data = (await res.json()) as RawEntryLeagues;
+  const leagues = (data.leagues?.classic ?? [])
+    .filter((l) => l.league_type !== "s") // system leagues such as "Overall"
+    .map((l) => ({ id: l.id, name: l.name, rank: l.entry_rank }));
+
+  return json({ leagues });
+}
