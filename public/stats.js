@@ -1,4 +1,4 @@
-/* stats.js: season leaderboards. Starts on fpl:ready from app.js. */
+/* stats.js: season leaderboards with shirts. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "stats") return;
   const $ = (id) => document.getElementById(id);
@@ -24,10 +24,12 @@
     [900, "900+ minutes"],
   ];
 
-  document.addEventListener("fpl:ready", (e) => init(e.detail));
+  document.addEventListener("fpl:ready", (e) => {
+    if (e.detail) init(e.detail);
+  });
 
   function init(snap) {
-    const teams = new Map(snap.teams.map((t) => [t.id, t.short]));
+    const F = window.FPL;
     const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
     const statSel = $("stat");
     const posSel = $("pos");
@@ -53,8 +55,8 @@
             .map(
               (p, i) => `<tr>
                 <td class="n">${i + 1}</td>
-                <td>${esc(p.web_name)}</td>
-                <td>${esc(teams.get(p.team))}</td>
+                <td>${F.playerHtml(p.id)}</td>
+                <td>${F.teamHtml(p.team)}</td>
                 <td>${esc(positions.get(p.element_type))}</td>
                 <td class="n"><strong>${fmt(p[field])}</strong></td>
                 <td class="n">${p.minutes.toLocaleString()}</td>
