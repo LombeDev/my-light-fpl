@@ -1,4 +1,4 @@
-/* app.js: shared nav, spinner, snapshot cache, shirts, players, fixtures, login, my team, live updates. */
+/* app.js: shared nav, centred spinner, snapshot cache, shirts, players, fixtures, login, my team, live updates. */
 (() => {
   const page = document.body.dataset.page;
   const $ = (id) => document.getElementById(id);
@@ -10,7 +10,13 @@
   const HASH = "fpl.hash";
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
 
-  // ---------- Loading spinner ----------
+  // ---------- Spinner: one centred element on every page ----------
+  const spinner = document.createElement("div");
+  spinner.className = "spinner";
+  spinner.setAttribute("role", "status");
+  spinner.setAttribute("aria-label", "Loading");
+  document.body.append(spinner);
+
   // Counts in-flight API requests. Background checks (live, version) are ignored,
   // so the spinner doesn't flash every minute during matches.
   let pending = 0;
@@ -69,10 +75,7 @@
     const links = LINKS.filter((l) => l.signedIn === undefined || l.signedIn === !!session)
       .map((l) => `<a href="${l.href}"${here === l.key ? ' aria-current="page"' : ""}>${l.label}</a>`)
       .join("");
-    nav.innerHTML =
-      links +
-      (session ? `<button type="button" id="signout">Sign out</button>` : "") +
-      `<span class="spinner" role="status" aria-label="Loading"></span>`;
+    nav.innerHTML = links + (session ? `<button type="button" id="signout">Sign out</button>` : "");
     $("signout")?.addEventListener("click", signOut);
   }
 
@@ -115,31 +118,31 @@
   const currentGw = (snap) =>
     (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
 
-  // ---------- Shirts and difficulty tint ----------
+  // ---------- Shirts and difficulty ----------
   let teamInfo = new Map();
   let playerInfo = new Map();
 
   const shirtImg = (code, goalkeeper = false) =>
     `<img class="shirt" src="${SHIRTS}/shirt_${code}${goalkeeper ? "_1" : ""}-66.png" alt="" loading="lazy">`;
 
-  // FDR: 1 to 2 is easy (green tint), 4 to 5 is hard (red tint), 3 is neutral.
-  const FDR_CLASS = (d) => (d <= 2 ? "tint-easy" : d >= 4 ? "tint-hard" : "");
-
-  // A team's shirt and short name.
+  // A club's shirt and short name, e.g. "[shirt] ARS".
   const teamHtml = (id) => {
     const t = teamInfo.get(id);
     if (!t) return "";
     return `${t.code ? shirtImg(t.code) : ""}<span>${esc(t.short)}</span>`;
   };
 
-  // A player's shirt and name. Element type 1 is goalkeeper, which uses the goalkeeper shirt.
+  // A player's shirt and name. Goalkeepers get the goalkeeper shirt.
   const playerHtml = (id) => {
     const p = playerInfo.get(id);
-    if (!p) return esc("Unknown");
+    if (!p) return "";
     const t = teamInfo.get(p.team);
     const img = t?.code ? shirtImg(t.code, p.element_type === 1) : "";
     return `${img}<span>${esc(p.web_name)}</span>`;
   };
+
+  // FDR class, from 1 (easiest) to 5 (hardest). Returns "" when there is no rating.
+  const fdr = (d) => (d >= 1 && d <= 5 ? `fdr-${Math.round(d)}` : "");
 
   // ---------- Live updates ----------
   let liveHash = null;
@@ -195,7 +198,6 @@
 
   // ---------- Players ----------
   function initPlayers(snap) {
-    const teams = new Map(snap.teams.map((t) => [t.id, t.short]));
     const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
     const q = $("q");
     const pos = $("pos");
@@ -218,7 +220,7 @@
 
     const rowHtml = (p) => `<tr data-el="${p.id}"${p.status !== "a" ? ' class="dim"' : ""}>
       <td>${playerHtml(p.id)}</td>
-      <td>${esc(teams.get(p.team))}</td>
+      <td>${teamHtml(p.team)}</td>
       <td>${esc(positions.get(p.element_type))}</td>
       <td class="n">${money(p.now_cost)}</td>
       <td class="n">${p.total_points}</td>
@@ -301,9 +303,9 @@
               const score =
                 f.started || f.finished ? `${f.home_score ?? 0} – ${f.away_score ?? 0}` : fmt(f.kickoff);
               return `<tr>
-                <td class="r ${FDR_CLASS(f.home_difficulty)}">${teamHtml(f.home)}</td>
+                <td class="r ${fdr(f.home_difficulty)}">${teamHtml(f.home)}</td>
                 <td class="c">${esc(score)}</td>
-                <td class="${FDR_CLASS(f.away_difficulty)}">${teamHtml(f.away)}</td>
+                <td class="${fdr(f.away_difficulty)}">${teamHtml(f.away)}</td>
               </tr>`;
             })
             .join("")
@@ -379,18 +381,16 @@
   }
 
   // ---------- My team ----------
-  async function initTeam() {
+  async function initTeam(snap) {
     const out = $("content");
     if (!session) return signOut();
 
     try {
       const me = await api("/me", { headers: { Authorization: `Bearer ${session.token}` } });
-      const snap = await loadSnapshot();
       const gw = currentGw(snap);
       const picks = await api(`/picks/${session.entryId}/${gw}`).catch(() => null);
 
       const byId = new Map(snap.players.map((p) => [p.id, p]));
-      const teams = new Map(snap.teams.map((t) => [t.id, t.short]));
       const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
 
       const table = (list) => `<table>
@@ -401,8 +401,8 @@
             const badge = pk.is_captain ? "Captain" : pk.is_vice_captain ? "Vice" : "";
             return `<tr>
               <td>${playerHtml(pk.element)}</td>
-              <td>${esc(p ? teams.get(p.team) : "")}</td>
-              <td>${esc(p ? positions.get(p.element_type) : "")}</td>
+              <td>${p ? teamHtml(p.team) : ""}</td>
+              <td>${p ? esc(positions.get(p.element_type)) : ""}</td>
               <td>${badge}</td>
             </tr>`;
           })
@@ -460,23 +460,29 @@
     renderNav();
 
     if (page === "login") return initLogin();
-    if (page === "team") return initTeam();
-    if (page === "leagues" || page === "manager") return; // leagues.js handles these
 
+    let snap = null;
     try {
-      const snap = await loadSnapshot();
+      snap = await loadSnapshot();
       teamInfo = new Map(snap.teams.map((t) => [t.id, t]));
       playerInfo = new Map(snap.players.map((p) => [p.id, p]));
-      window.FPL = { teamHtml, playerHtml, FDR_CLASS };
-
-      if (page === "players") initPlayers(snap);
-      if (page === "fixtures") initFixtures(snap);
-      initPrefetch(currentGw(snap));
-      // Other page scripts (games, prices, stats, planner) start here.
-      document.dispatchEvent(new CustomEvent("fpl:ready", { detail: snap }));
     } catch (err) {
-      const el = $("meta") || $("gw");
-      if (el) el.textContent = `Could not load data. ${err.message}`;
+      const message = `Could not load data. ${err.message}`;
+      if (page === "team") $("content").textContent = message;
+      else if (page !== "leagues" && page !== "manager") ($("meta") || $("gw") || {}).textContent = message;
     }
+
+    window.FPL = { teamHtml, playerHtml, fdr, gw: snap ? currentGw(snap) : 1 };
+
+    // Leagues pages always get this event, so their tables still load without the snapshot.
+    if (snap || page === "leagues" || page === "manager") {
+      document.dispatchEvent(new CustomEvent("fpl:ready", { detail: snap }));
+    }
+    if (!snap) return;
+
+    if (page === "team") return initTeam(snap);
+    if (page === "players") initPlayers(snap);
+    if (page === "fixtures") initFixtures(snap);
+    initPrefetch(currentGw(snap));
   })();
 })();
