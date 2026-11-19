@@ -186,3 +186,43 @@ body.busy .spinner { display: block; }
   border-radius: 3px;
   white-space: nowrap;
 }
+
+
+/* Navigation: plain text links with a faint highlight on hover. */
+:root { --hover: #ececf0; }
+@media (prefers-color-scheme: dark) {
+  :root { --hover: #2a2a31; }
+}
+
+nav { gap: 6px; }
+
+nav a,
+nav a:visited,
+nav a[aria-current="page"] {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 400;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 120ms ease;
+}
+nav a:hover { background: var(--hover); }
+nav a[aria-current="page"] {
+  font-weight: 700;
+  background: var(--hover);
+}
+
+nav button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  padding: 4px 8px;
+  min-height: 0;
+}
+nav button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.brand,
+.brand:hover { text-decoration: none; }
