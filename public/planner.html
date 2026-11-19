@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Planner · FPL</title>
-  <meta name="description" content="Plan a Fantasy Premier League squad within the budget and rules.">
+  <meta name="description" content="Plan a Fantasy Premier League squad, transfers and fixtures.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/planner.js" defer></script>
@@ -16,13 +16,19 @@
   </header>
 
   <main>
-    <h1>Squad planner</h1>
+    <h1>Planner</h1>
     <p class="lead">
       Build a 15-player squad within £100.0m: two goalkeepers, five defenders, five midfielders,
       three forwards, and no more than three players from one club. Your squad is saved on this device.
     </p>
     <p class="meta" id="meta">Loading…</p>
     <p id="summary"></p>
+
+    <div class="row">
+      <button id="import" type="button" hidden>Import my squad</button>
+      <button id="setbase" type="button">Use this squad as my team</button>
+      <button id="clear" type="button">Clear squad</button>
+    </div>
 
     <div class="controls">
       <label for="horizon">Fixture difficulty over</label>
@@ -32,12 +38,7 @@
         <option value="8">next 8 games</option>
       </select>
     </div>
-    <p class="meta">FDR runs from 1 (easiest) to 5 (hardest). Green is 2.5 or below, red is 3.5 or above.</p>
-
-    <div class="row">
-      <button id="import" type="button" hidden>Import my squad</button>
-      <button id="clear" type="button">Clear squad</button>
-    </div>
+    <p class="meta">FDR runs from 1 (easiest) to 5 (hardest).</p>
 
     <h2>Squad</h2>
     <div class="table-wrap">
@@ -49,6 +50,38 @@
           </tr>
         </thead>
         <tbody id="squad"></tbody>
+      </table>
+    </div>
+
+    <h2>Transfers</h2>
+    <div class="controls">
+      <label for="ft">Free transfers</label>
+      <select id="ft" aria-label="Free transfers">
+        <option value="0">0</option>
+        <option value="1" selected>1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+      </select>
+    </div>
+    <div id="transfers"></div>
+
+    <h2>Fixtures</h2>
+    <div class="controls">
+      <label for="fx-len">Show</label>
+      <select id="fx-len" aria-label="Gameweeks to show">
+        <option value="1" selected>this gameweek</option>
+        <option value="2">next 2 gameweeks</option>
+        <option value="3">next 3 gameweeks</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th class="r">Home</th><th class="c">Gameweek / result</th><th>Away</th></tr>
+        </thead>
+        <tbody id="fx-rows"></tbody>
       </table>
     </div>
 
