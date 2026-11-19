@@ -1,4 +1,4 @@
-/* planner.js: squad builder with fixture difficulty. Starts on fpl:ready from app.js. */
+/* planner.js: squad builder with shirts and fixture difficulty. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "planner") return;
   const $ = (id) => document.getElementById(id);
@@ -11,12 +11,10 @@
   const SIZE = 15;
   const QUOTA = { 1: 2, 2: 5, 3: 5, 4: 3 }; // element_type: count
   const CLUB_MAX = 3;
-  const EASY = 2.5;
-  const HARD = 3.5;
 
+  let F; // shirt and FDR helpers from app.js
   let snap;
   let byId;
-  let teams;
   let positions;
   let horizon = 5;
   let fixtureMap = new Map(); // team id -> [{ opp, home, diff }]
@@ -53,7 +51,7 @@
   }
 
   // ---------- Fixture difficulty ----------
-  // Builds each team's next `n` unfinished fixtures, in kickoff order.
+  // Each team's next `n` unfinished fixtures, in kickoff order.
   // Double gameweeks add two entries, blank gameweeks add none.
   function buildFixtures(n) {
     const upcoming = snap.fixtures
@@ -76,7 +74,7 @@
     fixtureMap = map;
   }
 
-  // Average difficulty over rated fixtures only, so a missing value is never counted as 0.
+  // Average over rated fixtures only, so a missing rating is never counted as 0.
   function fdrOf(teamId) {
     const list = fixtureMap.get(teamId) ?? [];
     const rated = list.filter((x) => x.diff > 0);
@@ -89,33 +87,36 @@
     return avg === null ? Number.POSITIVE_INFINITY : avg;
   };
 
+  // Average FDR cell, tinted with the same scale as the Fixtures page.
   function fdrCell(teamId) {
     const { avg } = fdrOf(teamId);
     if (avg === null) return `<td class="n">–</td>`;
-    const cls = avg <= EASY ? "n fdr-easy" : avg >= HARD ? "n fdr-hard" : "n";
-    return `<td class="${cls}">${avg.toFixed(1)}</td>`;
+    return `<td class="n ${F.fdr(Math.round(avg))}">${avg.toFixed(1)}</td>`;
   }
 
+  // Each upcoming opponent as a tinted chip, e.g. [shirt] ARS H.
   function nextCell(teamId) {
     const { list } = fdrOf(teamId);
     if (!list.length) return `<td class="muted">No fixtures</td>`;
     return `<td>${list
-      .map((x) => `${esc(teams.get(x.opp))} (${x.home ? "H" : "A"}) ${x.diff || "–"}`)
-      .join(", ")}</td>`;
+      .map((x) => `<span class="chip ${F.fdr(x.diff)}">${F.teamHtml(x.opp)} ${x.home ? "H" : "A"}</span>`)
+      .join("")}</td>`;
   }
 
-  // Average of each player's team FDR, ignoring teams with no rating.
+  // Average of each squad player's team FDR.
   function squadFdr() {
     const avgs = squad.map((id) => fdrOf(byId.get(id).team).avg).filter((v) => v !== null);
     return avgs.length ? avgs.reduce((s, v) => s + v, 0) / avgs.length : null;
   }
 
-  document.addEventListener("fpl:ready", (e) => init(e.detail));
+  document.addEventListener("fpl:ready", (e) => {
+    if (e.detail) init(e.detail);
+  });
 
   function init(s) {
     snap = s;
+    F = window.FPL;
     byId = new Map(snap.players.map((p) => [p.id, p]));
-    teams = new Map(snap.teams.map((t) => [t.id, t.short]));
     positions = new Map(snap.positions.map((p) => [p.id, p.short]));
     squad = readSquad().filter((id) => byId.has(id)).slice(0, SIZE);
 
@@ -192,8 +193,8 @@
           .map((id) => {
             const p = byId.get(id);
             return `<tr>
-              <td>${esc(p.web_name)}</td>
-              <td>${esc(teams.get(p.team))}</td>
+              <td>${F.playerHtml(p.id)}</td>
+              <td>${F.teamHtml(p.team)}</td>
               <td>${esc(positions.get(p.element_type))}</td>
               <td class="n">${money(p.now_cost)}</td>
               ${fdrCell(p.team)}
@@ -230,8 +231,8 @@
             const label = reason ?? "Add";
             const disabled = reason ? " disabled" : "";
             return `<tr${p.status !== "a" ? ' class="dim"' : ""}>
-              <td>${esc(p.web_name)}</td>
-              <td>${esc(teams.get(p.team))}</td>
+              <td>${F.playerHtml(p.id)}</td>
+              <td>${F.teamHtml(p.team)}</td>
               <td>${esc(positions.get(p.element_type))}</td>
               <td class="n">${money(p.now_cost)}</td>
               <td class="n">${p.total_points}</td>
@@ -248,8 +249,7 @@
     if (!session) return;
     $("meta").textContent = "Importing…";
     try {
-      const gw =
-        (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
+      const gw = F.gw;
       const res = await fetch(`/api/picks/${session.entryId}/${gw}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
