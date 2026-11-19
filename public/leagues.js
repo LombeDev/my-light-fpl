@@ -1,4 +1,4 @@
-/* leagues.js: standings, the signed-in user's leagues, and manager pages. Loads after app.js. */
+/* leagues.js: standings, your leagues, and manager pages with shirts. Waits for app.js to load the snapshot before drawing shirts. */
 (() => {
   const page = document.body.dataset.page;
   if (page !== "leagues" && page !== "manager") return;
@@ -7,7 +7,16 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const ID = /^\d{1,9}$/;
   const BATCH = 10;
-  const PLACEHOLDER = `<span class="muted">…</span>`;
+  const DASH = "–";
+
+  // Resolves once app.js has loaded the snapshot (or failed to), so shirts can be drawn.
+  const readyP = new Promise((resolve) =>
+    document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
+  );
+
+  const helpers = () =>
+    window.FPL ?? { teamHtml: () => "", playerHtml: () => "", fdr: () => "", gw: 1 };
+  const player = (id) => helpers().playerHtml(id) || DASH;
 
   async function api(path, options = {}) {
     const res = await fetch(`/api${path}`, options);
@@ -69,12 +78,12 @@
     return `<tr data-row="${r.entry}" data-net="${r.gw}">
       <td class="n">${r.rank}</td>
       <td><a href="/manager?id=${r.entry}" data-entry="${r.entry}">${esc(r.manager)}</a><br><span class="muted">${esc(r.team)}</span></td>
-      <td data-c="captain">${PLACEHOLDER}</td>
-      <td data-c="chip">${PLACEHOLDER}</td>
-      <td data-c="transfers">${PLACEHOLDER}</td>
+      <td data-c="captain"><span class="muted">…</span></td>
+      <td data-c="chip"><span class="muted">…</span></td>
+      <td data-c="transfers"><span class="muted">…</span></td>
       <td class="n" data-c="gw">${r.gw}</td>
       <td class="n">${r.total}</td>
-      <td class="n" data-c="value">${PLACEHOLDER}</td>
+      <td class="n" data-c="value"><span class="muted">…</span></td>
     </tr>`;
   }
 
@@ -88,14 +97,16 @@
 
     set(
       "captain",
-      d.captain
-        ? `${esc(d.captain)}${d.vice ? `<br><span class="muted">${esc(d.vice)}</span>` : ""}`
-        : "–",
+      d.captainId
+        ? `${player(d.captainId)}${d.viceId ? `<br><span class="muted">${player(d.viceId)}</span>` : ""}`
+        : DASH,
     );
-    set("chip", d.chip ? esc(d.chip) : "–");
+    set("chip", d.chip ? esc(d.chip) : DASH);
     set(
       "transfers",
-      d.transfers.length ? d.transfers.map((t) => `${esc(t.out)} → ${esc(t.in)}`).join("<br>") : "–",
+      d.transfers.length
+        ? d.transfers.map((t) => `${player(t.outId)} → ${player(t.inId)}`).join("<br>")
+        : DASH,
     );
     set("value", `£${(d.value / 10).toFixed(1)}m`);
 
@@ -108,11 +119,12 @@
     const tr = document.querySelector(`tr[data-row="${entry}"]`);
     if (!tr) return;
     tr.querySelectorAll("[data-c]").forEach((td) => {
-      if (td.textContent.trim() === "…") td.textContent = "–";
+      if (td.textContent.trim() === "…") td.textContent = DASH;
     });
   }
 
   async function fillDetails(results) {
+    await readyP;
     for (let i = 0; i < results.length; i += BATCH) {
       const chunk = results.slice(i, i + BATCH);
       try {
@@ -174,11 +186,6 @@
   }
 
   // ---------- Manager page ----------
-  async function snapshot() {
-    const cached = localStorage.getItem("fpl.snapshot");
-    return cached ? JSON.parse(cached) : api("/snapshot");
-  }
-
   const currentGw = (snap) =>
     (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
 
@@ -192,12 +199,14 @@
     }
 
     try {
-      const [{ entry }, snap] = await Promise.all([api(`/entry/${id}`), snapshot()]);
+      const [{ entry }, snap] = await Promise.all([
+        api(`/entry/${id}`),
+        readyP.then((s) => s ?? api("/snapshot")),
+      ]);
       const gw = currentGw(snap);
       const picks = await api(`/picks/${id}/${gw}`).catch(() => null);
 
       const byId = new Map(snap.players.map((p) => [p.id, p]));
-      const teams = new Map(snap.teams.map((t) => [t.id, t.short]));
       const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
 
       const table = (list) => `<table>
@@ -207,9 +216,9 @@
             const p = byId.get(pk.element);
             const badge = pk.is_captain ? "Captain" : pk.is_vice_captain ? "Vice" : "";
             return `<tr>
-              <td>${esc(p?.web_name ?? "Unknown")}</td>
-              <td>${esc(p ? teams.get(p.team) : "")}</td>
-              <td>${esc(p ? positions.get(p.element_type) : "")}</td>
+              <td>${player(pk.element)}</td>
+              <td>${p ? helpers().teamHtml(p.team) : ""}</td>
+              <td>${p ? esc(positions.get(p.element_type)) : ""}</td>
               <td>${badge}</td>
             </tr>`;
           })
