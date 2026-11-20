@@ -1,6 +1,7 @@
 import { ensureLive, ensureSnapshot, ensureState, getEntry, json, type Bg, type Env, type Meta } from "../../lib/fpl";
 import { challenge, login, me, myLeagues } from "../../lib/auth";
 import { league } from "../../lib/leagues";
+import { livescore } from "../../lib/live";
 import { managers } from "../../lib/managers";
 import { around, sampleSummary } from "../../lib/stats";
 
@@ -38,6 +39,7 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       if (path === "me") return await me(request, env);
       if (path === "me/leagues") return await myLeagues(request, env);
       if (path === "managers") return await managers(request, env);
+      if (path === "livescore") return await livescore(request, env);
       if (path === "sample") return await sampleSummary(env, bg);
 
       const am = /^around\/(\d{1,9})$/.exec(path);
