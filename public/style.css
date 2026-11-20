@@ -628,3 +628,142 @@ tr.you td { font-weight: 700; background: var(--hover); }
 }
 .lg-menu a:hover { background: var(--hover); }
 .lg-menu a[aria-current="true"] { font-weight: 700; background: var(--hover); }
+
+
+
+
+
+/* Pitch view: My team and manager pages share this layout. The pitch stays green in light and dark mode. */
+.pitch {
+  display: block;
+  position: relative;
+  background: linear-gradient(180deg, #62c398 0%, #4fae86 100%);
+  border-radius: 14px;
+  padding: 16px 6px 14px;
+  overflow: hidden;
+  margin: 8px 0 14px;
+}
+.pitch::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 140px;
+  height: 140px;
+  margin: -70px 0 0 -70px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.pitch::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+}
+
+.pc-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-evenly;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  margin: 4px 0 10px;
+}
+.pc { width: 92px; text-align: center; font-size: 13px; line-height: 1.2; }
+
+.pc-shirt {
+  position: relative;
+  height: 62px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.pc-shirt img {
+  height: 58px;
+  width: auto;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.25));
+}
+.pc-icon {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  margin-left: 12px;
+  font-size: 18px;
+  line-height: 1;
+}
+.pc-badge {
+  position: absolute;
+  bottom: 0;
+  right: 16px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+.pc-badge.c { background: #ffffff; color: #111111; }
+.pc-badge.v { background: #2c5cff; color: #ffffff; }
+
+.pc-name {
+  margin-top: 4px;
+  font-weight: 700;
+  color: #0b1f16;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-pts {
+  display: inline-block;
+  min-width: 56px;
+  margin-top: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #111111;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pc-pts.zero { background: #d9dde2; color: #111111; }
+.pc-eo {
+  margin-top: 4px;
+  color: #2f4a3e;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bench */
+.pc-bench {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 6px 4px;
+  margin-bottom: 16px;
+}
+.pc-bench-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: 4px;
+}
+.pc-b .pc-name { color: var(--text); }
+.pc-b .pc-eo { color: var(--muted); }
+.pc-b .pc-pts.zero { background: var(--row); color: var(--text); }
+
+@media (max-width: 560px) {
+  .pc { width: 64px; font-size: 11px; }
+  .pc-shirt { height: 50px; }
+  .pc-shirt img { height: 46px; }
+  .pc-pts { min-width: 40px; padding: 3px 4px; }
+}
