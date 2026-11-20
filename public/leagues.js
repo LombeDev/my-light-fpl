@@ -487,7 +487,6 @@
         readyP.then((s) => s ?? api("/snapshot")),
       ]);
       const gw = currentGw(snap);
-      const F = helpers();
       const picks = await api(`/picks/${id}/${gw}`).catch(() => null);
       const eoData = (await leagueEo(leagueId, gw)) ?? (await sampleEo(gw));
 
@@ -504,28 +503,24 @@
         <p class="meta" id="pitch-note"></p>
         <div id="pitch-wrap"></div>`;
 
-      $("pitch-note").textContent = eoData?.note ?? "Effective ownership is not available yet.";
+      $("pitch-note").textContent = eoData
+        ? `Percentages show effective ownership from the managers in this league or the top sample. Points show GW${gw}.`
+        : `Percentages show effective ownership once the sample has data. Points show GW${gw}.`;
 
       const draw = () => {
         if (!picks) {
           $("pitch-wrap").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
           return;
         }
+        const F = helpers();
         const live = F.live();
-        const hasLive = live.size > 0;
-
-        const cards = picks.picks.map((pk) => {
-          const d = live.get(pk.element);
-          const badge = pk.is_captain ? "C" : pk.is_vice_captain ? "V" : "";
-          return F.pitchCard({
-            id: pk.element,
-            badge,
-            eo: eoData ? (eoData.eo.get(pk.element) ?? 0) : null,
-            pts: hasLive ? (d ? d.p : 0) : null,
-            bench: pk.position > 11,
-          });
+        window.PITCH?.render($("pitch-wrap"), picks, {
+          snap,
+          eo: eoData?.eo ?? null,
+          live,
+          hasLive: live.size > 0,
+          gw,
         });
-        $("pitch-wrap").innerHTML = F.pitchHtml(cards);
       };
 
       draw();
