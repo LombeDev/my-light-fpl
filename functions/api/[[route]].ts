@@ -2,6 +2,7 @@ import { ensureLive, ensureSnapshot, ensureState, getEntry, json, type Bg, type 
 import { challenge, login, me, myLeagues } from "../../lib/auth";
 import { league } from "../../lib/leagues";
 import { managers } from "../../lib/managers";
+import { around, sampleSummary } from "../../lib/stats";
 
 const raw = (body: string, cacheControl: string): Response =>
   new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": cacheControl } });
@@ -37,6 +38,10 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       if (path === "me") return await me(request, env);
       if (path === "me/leagues") return await myLeagues(request, env);
       if (path === "managers") return await managers(request, env);
+      if (path === "sample") return await sampleSummary(env, bg);
+
+      const am = /^around\/(\d{1,9})$/.exec(path);
+      if (am) return await around(am[1], env);
 
       const pm = /^picks\/(\d{1,9})\/(\d{1,2})$/.exec(path);
       if (pm) {
