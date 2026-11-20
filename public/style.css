@@ -633,137 +633,155 @@ tr.you td { font-weight: 700; background: var(--hover); }
 
 
 
-/* Pitch view: My team and manager pages share this layout. The pitch stays green in light and dark mode. */
-.pitch {
-  display: block;
+
+/* Pitch view (My team and manager pages). Full width, in perspective, matching the reference layout.
+   Sizes use cqw, a percentage of the pitch width, so the layout scales on every screen. */
+.pv {
   position: relative;
-  background: linear-gradient(180deg, #62c398 0%, #4fae86 100%);
-  border-radius: 14px;
-  padding: 16px 6px 14px;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  container-type: inline-size;
   overflow: hidden;
-  margin: 8px 0 14px;
+  background: #4fae6e;
 }
-.pitch::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 140px;
-  height: 140px;
-  margin: -70px 0 0 -70px;
-  border: 2px solid rgba(255, 255, 255, 0.45);
-  border-radius: 50%;
-  pointer-events: none;
-}
-.pitch::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.45);
-  pointer-events: none;
-}
+.pv-field { position: relative; aspect-ratio: 1080 / 1095; }
 
-.pc-row {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: space-evenly;
-  align-items: flex-start;
-  flex-wrap: nowrap;
-  margin: 4px 0 10px;
+/* The grass and markings tilt back from the viewer, giving the 3D look. */
+.pv-grass {
+  position: absolute;
+  inset: 0;
+  transform: perspective(900px) rotateX(12deg) scale(1.04);
+  transform-origin: 50% 100%;
+  background: repeating-linear-gradient(180deg, #5fc282 0 12.5%, #4fb06f 12.5% 25%);
 }
-.pc { width: 92px; text-align: center; font-size: 13px; line-height: 1.2; }
+.pv-grass svg { display: block; width: 100%; height: 100%; }
 
-.pc-shirt {
+/* Cards stay upright and flat, so the text stays sharp. */
+.pv-row { position: absolute; left: 0; right: 0; transform-origin: 50% 100%; }
+.pv-cells { display: grid; justify-items: center; align-items: start; }
+
+.pv-card { width: 15cqw; color: #111; line-height: 1.1; }
+
+.pv-shirt {
   position: relative;
-  height: 62px;
+  height: 10cqw;
   display: flex;
-  align-items: flex-end;
   justify-content: center;
+  align-items: flex-end;
 }
-.pc-shirt img {
-  height: 58px;
+.pv-shirt img {
+  height: 100%;
   width: auto;
-  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.25));
+  filter: drop-shadow(0 0.6cqw 0.5cqw rgba(0, 0, 0, 0.3));
 }
-.pc-icon {
+
+/* Captain and vice-captain badges sit at the lower left of the shirt. */
+.pv-cap {
   position: absolute;
-  top: -4px;
-  left: 50%;
-  margin-left: 12px;
-  font-size: 18px;
-  line-height: 1;
-}
-.pc-badge {
-  position: absolute;
+  left: 6%;
   bottom: 0;
-  right: 16px;
-  width: 24px;
-  height: 24px;
+  width: 3.4cqw;
+  height: 3.4cqw;
   border-radius: 50%;
+  background: #111;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 13px;
+  font-size: max(9px, 2cqw);
+  box-shadow: 0 0 0 0.25cqw #fff;
 }
-.pc-badge.c { background: #ffffff; color: #111111; }
-.pc-badge.v { background: #2c5cff; color: #ffffff; }
 
-.pc-name {
-  margin-top: 4px;
+/* Live points sit at the upper right of the shirt. */
+.pv-pts {
+  position: absolute;
+  right: 0;
+  top: 0;
+  min-width: 4cqw;
+  height: 3.6cqw;
+  padding: 0 1cqw;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 700;
-  color: #0b1f16;
+  font-size: max(10px, 2.1cqw);
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0.3cqw 0.8cqw rgba(0, 0, 0, 0.2);
+}
+
+.pv-name {
+  background: #111;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.7cqw 0.8cqw;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.pc-pts {
-  display: inline-block;
-  min-width: 56px;
-  margin-top: 4px;
-  padding: 4px 6px;
-  border-radius: 4px;
-  background: #ffffff;
-  color: #111111;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.pc-pts.zero { background: #d9dde2; color: #111111; }
-.pc-eo {
-  margin-top: 4px;
-  color: #2f4a3e;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font-size: max(9px, 2.2cqw);
 }
 
-/* Bench */
-.pc-bench {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 6px 4px;
-  margin-bottom: 16px;
-}
-.pc-bench-title {
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+.pv-opp {
   text-align: center;
-  margin-bottom: 4px;
+  font-weight: 600;
+  padding: 0.7cqw 0.8cqw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: max(9px, 2.1cqw);
+  background: #ececE6;
 }
-.pc-b .pc-name { color: var(--text); }
-.pc-b .pc-eo { color: var(--muted); }
-.pc-b .pc-pts.zero { background: var(--row); color: var(--text); }
+.pv-opp.fdr-e { background: #7fe9a4; }
+.pv-opp.fdr-m { background: #ececE6; }
+.pv-opp.fdr-h { background: #f0365f; color: #fff; }
+.pv-opp.fdr-x { background: #8e1a3c; color: #fff; }
+.pv-opp.fdr-b { background: #c9ccd2; }
 
-@media (max-width: 560px) {
-  .pc { width: 64px; font-size: 11px; }
-  .pc-shirt { height: 50px; }
-  .pc-shirt img { height: 46px; }
-  .pc-pts { min-width: 40px; padding: 3px 4px; }
+.pv-price {
+  background: #fff;
+  text-align: center;
+  font-weight: 700;
+  padding: 0.9cqw 0.8cqw;
+  font-size: max(10px, 2.5cqw);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-eo {
+  background: #bdeccd;
+  text-align: center;
+  font-weight: 600;
+  padding: 0.7cqw 0.8cqw;
+  white-space: nowrap;
+  font-size: max(9px, 2cqw);
+  font-variant-numeric: tabular-nums;
+}
+.pv-dice { font-size: max(9px, 2cqw); vertical-align: 0.1em; }
+
+/* Chip badge, top left of the pitch. */
+.pv-chip {
+  position: absolute;
+  left: 4.6%;
+  top: 14%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1.2cqw;
+  padding: 1.2cqw 2.6cqw;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-weight: 700;
+  font-size: max(10px, 2.4cqw);
+  box-shadow: 0 0.5cqw 1.5cqw rgba(0, 0, 0, 0.2);
+}
+
+/* Bench strip below the pitch. */
+.pv-bench {
+  position: relative;
+  padding: 1.8cqw 0 2.4cqw;
+  background: linear-gradient(180deg, #dfe2e6 0%, #f4f5f7 100%);
 }
