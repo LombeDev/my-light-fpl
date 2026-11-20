@@ -1,5 +1,5 @@
-/* pitch.js: the pitch used by My team and manager pages. Full-width grass in perspective, white markings,
-   cards with name, opponent, price and xEO, and a grey bench strip. */
+/* pitch.js: the pitch used by My team and manager pages. Rows stack in a flex column, so cards never overlap.
+   Each card shows the shirt, name, opponent (coloured by FDR), price and xEO, in that order. */
 (() => {
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -12,32 +12,24 @@
     manager: "Assistant Manager",
   };
 
-  // Rows from goalkeeper to forward. top is the card's top edge as a % of the pitch height.
-  // scale gives depth: rows nearer the goal sit slightly smaller.
-  const ROWS = [
-    { type: 1, top: 2.3, scale: 0.93 },
-    { type: 2, top: 26.5, scale: 0.97 },
-    { type: 3, top: 51, scale: 1 },
-    { type: 4, top: 75, scale: 1.03 },
-  ];
+  // Goalkeeper, defenders, midfielders, forwards.
+  const LINES = [1, 2, 3, 4];
 
-  // Markings on a 1080 x 1095 canvas, matched to the reference.
+  // Pitch markings. The grass is stretched to fit, so these only need to be proportional.
   const MARKINGS = `
-    <svg viewBox="0 0 1080 1095" preserveAspectRatio="none" aria-hidden="true">
-      <g fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="6">
-        <rect x="50" y="40" width="980" height="1015"/>
-        <line x1="50" y1="935" x2="1030" y2="935"/>
-        <circle cx="540" cy="935" r="150"/>
-        <rect x="210" y="40" width="660" height="265"/>
-        <rect x="352" y="40" width="376" height="98"/>
-        <rect x="425" y="-4" width="230" height="44" fill="rgba(255,255,255,0.08)"/>
-      </g>
-      <g fill="rgba(255,255,255,0.95)">
-        <circle cx="540" cy="935" r="8"/>
-        <circle cx="540" cy="190" r="6"/>
+    <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+      <g fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="5" vector-effect="non-scaling-stroke">
+        <rect x="40" y="40" width="920" height="920"/>
+        <line x1="40" y1="500" x2="960" y2="500"/>
+        <ellipse cx="500" cy="500" rx="110" ry="110"/>
+        <rect x="230" y="40" width="540" height="170"/>
+        <rect x="360" y="40" width="280" height="60"/>
+        <rect x="230" y="790" width="540" height="170"/>
+        <rect x="360" y="900" width="280" height="60"/>
       </g>
     </svg>`;
 
+  // Colour for the opponent bar, from FPL's FDR scale.
   const fdrClass = (d) => (d <= 2 ? "fdr-e" : d === 3 ? "fdr-m" : d === 4 ? "fdr-h" : "fdr-x");
 
   // Renders a squad into `el`.
@@ -98,14 +90,10 @@
     const xi = picks.picks.filter((x) => x.position <= 11);
     const bench = picks.picks.filter((x) => x.position > 11);
 
-    const rows = ROWS.map((r) => {
-      const list = xi.filter((pk) => byId.get(pk.element)?.element_type === r.type);
+    const rows = LINES.map((type) => {
+      const list = xi.filter((pk) => byId.get(pk.element)?.element_type === type);
       if (!list.length) return "";
-      return `<div class="pv-row" style="top:${r.top}%;transform:scale(${r.scale})">
-        <div class="pv-cells" style="grid-template-columns:repeat(${list.length},1fr)">
-          ${list.map((pk) => card(pk, false)).join("")}
-        </div>
-      </div>`;
+      return `<div class="pv-row">${list.map((pk) => card(pk, false)).join("")}</div>`;
     }).join("");
 
     const chip = picks.active_chip ? (CHIPS[picks.active_chip] ?? picks.active_chip) : "No chip";
@@ -115,12 +103,10 @@
         <div class="pv-field">
           <div class="pv-grass">${MARKINGS}</div>
           <div class="pv-chip"><span aria-hidden="true">◎</span>${esc(chip)}</div>
-          ${rows}
+          <div class="pv-rows">${rows}</div>
         </div>
         <div class="pv-bench">
-          <div class="pv-cells" style="grid-template-columns:repeat(4,1fr)">
-            ${bench.map((pk) => card(pk, true)).join("")}
-          </div>
+          <div class="pv-row">${bench.map((pk) => card(pk, true)).join("")}</div>
         </div>
       </div>`;
   }
