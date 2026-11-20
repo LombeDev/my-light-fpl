@@ -1,5 +1,5 @@
 /* prices.js: countdown, price progress table, predictions, trends and past changes.
-   Starts on fpl:ready from app.js. */
+   Lists show 25 at a time; search and filters run over every player. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "prices") return;
   const $ = (id) => document.getElementById(id);
@@ -8,6 +8,7 @@
   const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
   const absPct = (v) => `${Math.abs(v).toFixed(1)}%`;
   const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
+  const PAGE = 25;
 
   // Estimate settings. Confirm these against real price changes and adjust here.
   const RISE_NET = 220000; // net transfers for a rise to reach 100%
@@ -19,7 +20,6 @@
   const KEY_PROG = "fpl.progress";
   const KEY_WATCH = "fpl.watch";
   const KEY_BASE = "fpl.baseline";
-  const MAX_ROWS = 200;
 
   let snap = null;
   let teamById = new Map();
@@ -27,7 +27,7 @@
   let rates = {}; // player id -> progress change per hour, in percentage points
   let watch = [];
   let mine = new Set();
-  const state = { tab: "table", sub: "all", list: "risers", pct: true };
+  const state = { tab: "table", sub: "all", list: "risers", pct: true, limit: PAGE, pastLimit: PAGE };
 
   // ---------- Storage ----------
   const readJSON = (key, fallback) => {
@@ -119,6 +119,23 @@
     </div>${star}</div>`;
   };
 
+  // "Show more" button under a table. Created once, then kept in sync.
+  function moreBtn(id, tbody, total, limit, onClick) {
+    let btn = document.getElementById(id);
+    if (!btn) {
+      const p = document.createElement("p");
+      btn = document.createElement("button");
+      btn.id = id;
+      btn.type = "button";
+      p.append(btn);
+      tbody.closest(".table-wrap").after(p);
+      btn.addEventListener("click", onClick);
+    }
+    const left = total - limit;
+    btn.hidden = left <= 0;
+    btn.textContent = `Show more (${Math.max(0, left)} left)`;
+  }
+
   // ---------- Table tab ----------
   function tableItems() {
     const dirWant = state.list === "risers" ? 1 : -1;
@@ -136,11 +153,12 @@
     if (team) items = items.filter((x) => x.p.team === team);
     if (needle) items = items.filter((x) => x.p.web_name.toLowerCase().includes(needle));
 
-    return items.sort((a, b) => Math.abs(b.sp) - Math.abs(a.sp)).slice(0, MAX_ROWS);
+    return items.sort((a, b) => Math.abs(b.sp) - Math.abs(a.sp));
   }
 
   function renderTable(now) {
-    const items = tableItems();
+    const all = tableItems();
+    const items = all.slice(0, state.limit);
     const emptyText =
       state.sub === "mine" && !mine.size
         ? "Set your team first, by importing your squad in the Planner."
@@ -175,6 +193,11 @@
           })
           .join("")
       : `<tr><td colspan="5">${esc(emptyText)}</td></tr>`;
+
+    moreBtn("more-table", $("rows"), all.length, state.limit, () => {
+      state.limit += PAGE;
+      renderTable(Date.now());
+    });
 
     $("table-note").textContent = Object.keys(rates).length
       ? "Per hr and day predictions use progress measured on this device."
@@ -227,7 +250,7 @@
       .map((p) => ({ p, vol: p.transfers_in + p.transfers_out, n: net(p) }))
       .filter((x) => x.vol > 0)
       .sort((a, b) => b.vol - a.vol)
-      .slice(0, 36);
+      .slice(0, 24);
 
     if (!top.length) {
       $("trends").innerHTML = `<p class="meta">No transfers recorded this gameweek yet.</p>`;
@@ -261,10 +284,12 @@
 
   // ---------- Past tab ----------
   function renderPast() {
-    const rows = snap.players
+    const all = snap.players
       .filter((p) => p.cost_change_start !== 0)
-      .sort((a, b) => Math.abs(b.cost_change_start) - Math.abs(a.cost_change_start))
-      .slice(0, 150)
+      .sort((a, b) => Math.abs(b.cost_change_start) - Math.abs(a.cost_change_start));
+
+    const rows = all
+      .slice(0, state.pastLimit)
       .map((p) => {
         const start = p.now_cost - p.cost_change_start;
         const change = p.cost_change_start / 10;
@@ -279,6 +304,11 @@
       .join("");
 
     $("past-rows").innerHTML = rows || `<tr><td colspan="5">No price changes this season yet.</td></tr>`;
+
+    moreBtn("more-past", $("past-rows"), all.length, state.pastLimit, () => {
+      state.pastLimit += PAGE;
+      renderPast();
+    });
   }
 
   // ---------- Countdown ----------
@@ -304,8 +334,7 @@
   }
 
   function refresh() {
-    const now = Date.now();
-    updateRates(now);
+    updateRates(Date.now());
     renderCurrent();
     $("meta").textContent = `Updated ${new Date(snap.generatedAt).toLocaleString()}`;
   }
@@ -317,6 +346,12 @@
     for (const t of ["table", "summary", "trends", "past"]) $(`tab-${t}`).hidden = t !== tab;
     renderCurrent();
   }
+
+  // Any change to a filter starts the list again from the first 25.
+  const resetTable = () => {
+    state.limit = PAGE;
+    renderTable(Date.now());
+  };
 
   function init(s) {
     snap = s;
@@ -338,7 +373,7 @@
         document.querySelectorAll(".subtab").forEach((x) =>
           x.setAttribute("aria-selected", String(x.dataset.sub === state.sub)),
         );
-        renderTable(Date.now());
+        resetTable();
       }),
     );
 
@@ -346,14 +381,14 @@
       state.list = list;
       $("risers").setAttribute("aria-pressed", String(list === "risers"));
       $("fallers").setAttribute("aria-pressed", String(list === "fallers"));
-      renderTable(Date.now());
+      resetTable();
     };
     $("risers").addEventListener("click", () => setList("risers"));
     $("fallers").addEventListener("click", () => setList("fallers"));
 
-    $("q").addEventListener("input", () => renderTable(Date.now()));
-    $("pos").addEventListener("change", () => renderTable(Date.now()));
-    $("team").addEventListener("change", () => renderTable(Date.now()));
+    $("q").addEventListener("input", resetTable);
+    $("pos").addEventListener("change", resetTable);
+    $("team").addEventListener("change", resetTable);
 
     $("pct").addEventListener("change", (e) => {
       state.pct = e.target.checked;
