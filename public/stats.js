@@ -1,11 +1,13 @@
-/* stats.js: leaderboards, double and blank gameweeks, sample ownership, chips, captains, ownership combinations,
-   managers around you. Starts on fpl:ready from app.js. */
+/* stats.js: leaderboards (25 at a time), double and blank gameweeks, sample ownership, chips, captains,
+   ownership combinations (top 10), managers around you. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "stats") return;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const pct = (v) => `${Number(v ?? 0).toFixed(1)}%`;
   const SESSION = "fpl.session";
+  const PAGE = 25;
+  const TOP = 10;
 
   // [field, label, formatter]
   const STATS = [
@@ -52,12 +54,30 @@
     <tbody>${rows || `<tr><td colspan="${head.length}">No data yet.</td></tr>`}</tbody>
   </table></div>`;
 
+  // "Show more" button under a table. Created once, then kept in sync.
+  function moreBtn(id, tbody, total, limit, onClick) {
+    let btn = document.getElementById(id);
+    if (!btn) {
+      const p = document.createElement("p");
+      btn = document.createElement("button");
+      btn.id = id;
+      btn.type = "button";
+      p.append(btn);
+      tbody.closest(".table-wrap").after(p);
+      btn.addEventListener("click", onClick);
+    }
+    const left = total - limit;
+    btn.hidden = left <= 0;
+    btn.textContent = `Show more (${Math.max(0, left)} left)`;
+  }
+
   function init(snap) {
     const F = window.FPL;
     const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
     const statSel = $("stat");
     const posSel = $("pos");
     const minSel = $("mins");
+    let limit = PAGE;
 
     STATS.forEach(([field, label]) => statSel.append(new Option(label, field)));
     snap.positions.forEach((p) => posSel.append(new Option(p.short, String(p.id))));
@@ -69,10 +89,10 @@
       const min = Number(minSel.value);
       $("valh").textContent = label;
 
-      const list = snap.players
+      const all = snap.players
         .filter((p) => (!posId || p.element_type === posId) && p.minutes >= min)
-        .sort((a, b) => b[field] - a[field])
-        .slice(0, 100);
+        .sort((a, b) => b[field] - a[field]);
+      const list = all.slice(0, limit);
 
       $("rows").innerHTML = list.length
         ? list
@@ -96,14 +116,23 @@
             .join("")
         : `<tr><td colspan="13">No players match.</td></tr>`;
 
-      $("meta").textContent = `Top ${list.length} · season to date · updated ${new Date(snap.generatedAt).toLocaleString()}`;
+      moreBtn("more-board", $("rows"), all.length, limit, () => {
+        limit += PAGE;
+        render();
+      });
+
+      $("meta").textContent = `Top ${all.length} · showing ${list.length} · season to date · updated ${new Date(snap.generatedAt).toLocaleString()}`;
     }
 
-    statSel.addEventListener("change", render);
-    posSel.addEventListener("change", render);
-    minSel.addEventListener("change", render);
-    render();
+    const reset = () => {
+      limit = PAGE;
+      render();
+    };
+    statSel.addEventListener("change", reset);
+    posSel.addEventListener("change", reset);
+    minSel.addEventListener("change", reset);
 
+    render();
     renderFixtureLoad(snap);
     renderSample(snap);
     renderCombos(snap);
@@ -207,7 +236,7 @@
       })
       .filter(Boolean)
       .sort((a, b) => b.eo - a.eo)
-      .slice(0, 25);
+      .slice(0, TOP);
 
     const eoRows = eo
       .map(
@@ -228,7 +257,7 @@
       .map(([id, v]) => ({ p: byId.get(Number(id)), cap: v, vice: s.vice[id] ?? 0 }))
       .filter((x) => x.p)
       .sort((a, b) => b.cap - a.cap)
-      .slice(0, 10);
+      .slice(0, TOP);
 
     const capRows = caps
       .map(
@@ -255,7 +284,7 @@
       .map(([id, v]) => ({ p: byId.get(Number(id)), v }))
       .filter((x) => x.p)
       .sort((a, b) => b.v - a.v)
-      .slice(0, 15);
+      .slice(0, TOP);
 
     const tmplRows = template
       .map(
@@ -270,7 +299,7 @@
       .join("");
 
     body.innerHTML = `
-      <h3>Effective ownership (top 25)</h3>
+      <h3>Effective ownership (top ${TOP})</h3>
       <p class="meta">Effective ownership is the share of the sample owning the player, plus the share captaining them.</p>
       ${table(
         [
@@ -307,7 +336,7 @@
         chipRows,
       )}
 
-      <h3>Template (most owned in the sample)</h3>
+      <h3>Template (most owned in the sample, top ${TOP})</h3>
       ${table(
         [
           { label: "Player" },
@@ -348,6 +377,7 @@
     const name = (id) => F.playerHtml(id) || esc("Unknown");
 
     const pairRows = (s.pairs ?? [])
+      .slice(0, TOP)
       .map(
         (x) => `<tr>
           <td>${name(x.a)}</td>
@@ -367,7 +397,7 @@
       .join("");
 
     body.innerHTML = `
-      <h3>Most common pairs (top 25)</h3>
+      <h3>Most common pairs (top ${TOP})</h3>
       ${table(
         [
           { label: "Player" },
@@ -379,7 +409,7 @@
       )}
 
       <h3>Who else do managers pick?</h3>
-      <p class="meta">Choose a player to see the players they are most often owned alongside. Share is the percentage of that player's owners who also own the other player.</p>
+      <p class="meta">Choose a player to see the players they are most often owned alongside (top ${TOP}). Share is the percentage of that player's owners who also own the other player.</p>
       <div class="controls">
         <label for="pair-pick">Player</label>
         <select id="pair-pick">${choices}</select>
@@ -399,6 +429,7 @@
           return;
         }
         const rows = d.partners
+          .slice(0, TOP)
           .map((x) => {
             const p = byId.get(x.id);
             return `<tr>
