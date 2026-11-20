@@ -30,85 +30,101 @@
       <button id="clear" type="button">Clear squad</button>
     </div>
 
-    <div class="controls">
-      <label for="horizon">Fixture difficulty over</label>
-      <select id="horizon" aria-label="Fixtures to rate">
-        <option value="3">next 3 games</option>
-        <option value="5" selected>next 5 games</option>
-        <option value="8">next 8 games</option>
-      </select>
-    </div>
-    <p class="meta">FDR runs from 1 (easiest) to 5 (hardest).</p>
+    <section>
+      <div class="ticker-head">
+        <h2>Season ticker</h2>
+        <div class="stepper">
+          <span class="label">Gameweeks</span>
+          <button id="gw-minus" type="button" aria-label="Fewer gameweeks">−</button>
+          <strong id="gw-count">5</strong>
+          <button id="gw-plus" type="button" aria-label="More gameweeks">+</button>
+        </div>
+        <button id="edit-fdr" type="button">Edit FDR</button>
+      </div>
 
-    <h2>Squad</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Player</th><th>Team</th><th>Pos</th><th class="n">Price</th>
-            <th class="n" data-h>FDR</th><th>Next games</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="squad"></tbody>
-      </table>
-    </div>
+      <div id="fdr-editor" hidden></div>
 
-    <h2>Transfers</h2>
-    <div class="controls">
-      <label for="ft">Free transfers</label>
-      <select id="ft" aria-label="Free transfers">
-        <option value="0">0</option>
-        <option value="1" selected>1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="5">5</option>
-      </select>
-    </div>
-    <div id="transfers"></div>
+      <div class="table-wrap">
+        <table class="ticker">
+          <thead id="tk-head"></thead>
+          <tbody id="tk-body"></tbody>
+        </table>
+      </div>
+      <p class="meta">
+        Score is the total FDR across the gameweeks shown, so lower is easier. Uppercase is a home fixture,
+        lowercase is away. Mine lists your planned squad players at each club.
+      </p>
+    </section>
 
-    <h2>Fixtures</h2>
-    <div class="controls">
-      <label for="fx-len">Show</label>
-      <select id="fx-len" aria-label="Gameweeks to show">
-        <option value="1" selected>this gameweek</option>
-        <option value="2">next 2 gameweeks</option>
-        <option value="3">next 3 gameweeks</option>
-      </select>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th class="r">Home</th><th class="c">Gameweek / result</th><th>Away</th></tr>
-        </thead>
-        <tbody id="fx-rows"></tbody>
-      </table>
-    </div>
+    <section>
+      <div class="ticker-head">
+        <h2>Fixtures</h2>
+        <div class="stepper">
+          <button id="fx-prev" type="button" aria-label="Previous gameweek">‹</button>
+          <strong id="fx-gw">Gameweek</strong>
+          <button id="fx-next" type="button" aria-label="Next gameweek">›</button>
+        </div>
+      </div>
+      <p class="meta">The percentage under each club is its players' effective ownership in the top-500 sample.</p>
+      <div id="fx-list"></div>
+    </section>
 
-    <h2>Add players</h2>
-    <div class="controls">
-      <input id="q" type="search" placeholder="Search players" aria-label="Search players">
-      <select id="pos" aria-label="Position">
-        <option value="0">All positions</option>
-      </select>
-      <select id="sort" aria-label="Sort by">
-        <option value="points">Total points</option>
-        <option value="fdr">Easiest fixtures</option>
-        <option value="price">Price</option>
-      </select>
-    </div>
+    <section>
+      <h2>Squad</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Player</th><th>Team</th><th>Pos</th><th class="n">Price</th>
+              <th class="n" data-h>FDR</th><th>Next games</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="squad"></tbody>
+        </table>
+      </div>
+    </section>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Player</th><th>Team</th><th>Pos</th><th class="n">Price</th>
-            <th class="n">Points</th><th class="n" data-h>FDR</th><th>Next games</th><th></th>
-          </tr>
-        </thead>
-        <tbody id="pool"></tbody>
-      </table>
-    </div>
+    <section>
+      <h2>Transfers</h2>
+      <div class="controls">
+        <label for="ft">Free transfers</label>
+        <select id="ft" aria-label="Free transfers">
+          <option value="0">0</option>
+          <option value="1" selected>1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+      <div id="transfers"></div>
+    </section>
+
+    <section>
+      <h2>Add players</h2>
+      <div class="controls">
+        <input id="q" type="search" placeholder="Search players" aria-label="Search players">
+        <select id="pos" aria-label="Position">
+          <option value="0">All positions</option>
+        </select>
+        <select id="sort" aria-label="Sort by">
+          <option value="points">Total points</option>
+          <option value="fdr">Easiest fixtures</option>
+          <option value="price">Price</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Player</th><th>Team</th><th>Pos</th><th class="n">Price</th>
+              <th class="n">Points</th><th class="n" data-h>FDR</th><th>Next games</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="pool"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 
   <footer>
