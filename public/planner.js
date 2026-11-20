@@ -1,29 +1,39 @@
-/* planner.js: squad builder, transfers with hit cost, fixture difficulty and fixtures. Starts on fpl:ready from app.js. */
+/* planner.js: season ticker with FDR editing, fixtures with effective ownership, squad builder, transfers.
+   Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "planner") return;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
+  const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
 
-  const KEY = "fpl.squad";        // planned squad
-  const BASE = "fpl.baseline";    // current team, used for transfers
-  const FT_KEY = "fpl.ft";        // free transfers
+  const KEY = "fpl.squad";
+  const BASE = "fpl.baseline";
+  const FT_KEY = "fpl.ft";
+  const OVR_KEY = "fpl.fdrOverrides";
   const SESSION = "fpl.session";
   const BUDGET = 1000; // tenths of a million
   const SIZE = 15;
   const QUOTA = { 1: 2, 2: 5, 3: 5, 4: 3 }; // element_type: count
   const CLUB_MAX = 3;
   const HIT = 4;
+  const MAX_GW = 10;
 
   let F;
   let snap;
   let byId;
+  let teamById;
   let positions;
-  let horizon = 5;
-  let fixtureMap = new Map(); // team id -> [{ opp, home, diff }]
+  let count = 5; // gameweeks in the ticker, also the window for squad FDR
+  let fxGw = 1; // gameweek shown in the fixtures list
+  let fixtureMap = new Map(); // team id -> [{ opp, home, diff }] for the squad window
+  let teamEo = null; // club id -> summed effective ownership (%), null until the sample loads
   let squad = [];
   let baseline = [];
+  let ovr = readOvr(); // "fixtureId:h" or "fixtureId:a" -> difficulty override
+  let editing = false;
 
+  // ---------- Storage ----------
   const readList = (key) => {
     try {
       return JSON.parse(localStorage.getItem(key)) ?? [];
@@ -33,6 +43,15 @@
   };
   const saveList = (key, list) => localStorage.setItem(key, JSON.stringify(list));
 
+  function readOvr() {
+    try {
+      return JSON.parse(localStorage.getItem(OVR_KEY)) ?? {};
+    } catch {
+      return {};
+    }
+  }
+  const saveOvr = () => localStorage.setItem(OVR_KEY, JSON.stringify(ovr));
+
   const readSession = () => {
     try {
       return JSON.parse(localStorage.getItem(SESSION));
@@ -40,6 +59,22 @@
       return null;
     }
   };
+
+  // ---------- Helpers ----------
+  const shirt = (code) =>
+    code ? `<img class="shirt" src="${SHIRTS}/shirt_${code}-66.png" alt="" loading="lazy">` : "";
+
+  const maxGw = () => snap.events.length || 38;
+  const gwEnd = (from, n) => Math.min(maxGw(), from + n - 1);
+
+  // Difficulty for one side of a fixture, with any manual change applied.
+  function diffOf(f, side) {
+    const k = `${f.id}:${side}`;
+    if (ovr[k] !== undefined) return ovr[k];
+    return side === "h" ? f.home_difficulty : f.away_difficulty;
+  }
+
+  const solid = (d) => `fdr-solid-${Math.round(d)}`;
 
   const spent = () => squad.reduce((sum, id) => sum + byId.get(id).now_cost, 0);
   const countPos = (type) => squad.filter((id) => byId.get(id).element_type === type).length;
@@ -54,8 +89,7 @@
     return null;
   }
 
-  // ---------- Fixture difficulty ----------
-  // Each team's next `n` unfinished fixtures, in kickoff order.
+  // ---------- Squad window: next `n` unfinished fixtures per team ----------
   function buildFixtures(n) {
     const upcoming = snap.fixtures
       .filter((f) => !f.finished && f.kickoff)
@@ -69,10 +103,9 @@
         map.set(team, list);
       }
     };
-
     for (const f of upcoming) {
-      add(f.home, f.away, true, f.home_difficulty);
-      add(f.away, f.home, false, f.away_difficulty);
+      add(f.home, f.away, true, diffOf(f, "h"));
+      add(f.away, f.home, false, diffOf(f, "a"));
     }
     fixtureMap = map;
   }
@@ -93,20 +126,41 @@
   function fdrCell(teamId) {
     const { avg } = fdrOf(teamId);
     if (avg === null) return `<td class="n">–</td>`;
-    return `<td class="n ${F.fdr(Math.round(avg))}">${avg.toFixed(1)}</td>`;
+    return `<td class="n"><span class="pill ${solid(avg)}">${avg.toFixed(1)}</span></td>`;
   }
 
   function nextCell(teamId) {
     const { list } = fdrOf(teamId);
     if (!list.length) return `<td class="muted">No fixtures</td>`;
     return `<td>${list
-      .map((x) => `<span class="chip ${F.fdr(x.diff)}">${F.teamHtml(x.opp)} ${x.home ? "H" : "A"}</span>`)
+      .map((x) => `<span class="chip ${solid(x.diff)}">${F.teamHtml(x.opp)} ${x.home ? "H" : "A"}</span>`)
       .join("")}</td>`;
   }
 
   function squadFdr() {
     const avgs = squad.map((id) => fdrOf(byId.get(id).team).avg).filter((v) => v !== null);
     return avgs.length ? avgs.reduce((s, v) => s + v, 0) / avgs.length : null;
+  }
+
+  // ---------- Effective ownership by club ----------
+  const eoText = (teamId) => (teamEo === null ? "–" : `${Math.round(teamEo.get(teamId) ?? 0)}%`);
+
+  async function loadEo() {
+    try {
+      const res = await fetch("/api/sample");
+      const s = await res.json();
+      if (!res.ok || !s.sampled) return;
+
+      const map = new Map();
+      for (const p of snap.players) {
+        const eo = (s.owned[p.id] ?? 0) + (s.captain?.[p.id] ?? 0);
+        map.set(p.team, (map.get(p.team) ?? 0) + eo);
+      }
+      teamEo = map;
+      renderFixtures();
+    } catch {
+      /* sample unavailable: keep the dashes */
+    }
   }
 
   // ---------- Init ----------
@@ -118,68 +172,113 @@
     snap = s;
     F = window.FPL;
     byId = new Map(snap.players.map((p) => [p.id, p]));
+    teamById = new Map(snap.teams.map((t) => [t.id, t]));
     positions = new Map(snap.positions.map((p) => [p.id, p.short]));
     squad = readList(KEY).filter((id) => byId.has(id)).slice(0, SIZE);
     baseline = readList(BASE).filter((id) => byId.has(id)).slice(0, SIZE);
+    fxGw = F.gw;
 
     snap.positions.forEach((p) => $("pos").append(new Option(p.short, String(p.id))));
-    buildFixtures(horizon);
+    $("ft").value = localStorage.getItem(FT_KEY) ?? "1";
 
     const session = readSession();
     $("import").hidden = !session;
-    $("ft").value = localStorage.getItem(FT_KEY) ?? "1";
 
-    $("horizon").addEventListener("change", (e) => {
-      horizon = Number(e.target.value);
-      buildFixtures(horizon);
-      render();
+    // Season ticker controls
+    $("gw-minus").addEventListener("click", () => {
+      count = Math.max(1, count - 1);
+      renderAll();
     });
+    $("gw-plus").addEventListener("click", () => {
+      count = Math.min(MAX_GW, count + 1);
+      renderAll();
+    });
+    $("edit-fdr").addEventListener("click", () => {
+      editing = !editing;
+      renderAll();
+    });
+    $("fdr-editor").addEventListener("change", (e) => {
+      const sel = e.target;
+      if (!sel.dataset.fid) return;
+      ovr[`${sel.dataset.fid}:${sel.dataset.side}`] = Number(sel.value);
+      saveOvr();
+      renderAll();
+    });
+    $("fdr-editor").addEventListener("click", (e) => {
+      if (e.target.id !== "fdr-reset") return;
+      ovr = {};
+      saveOvr();
+      renderAll();
+    });
+
+    // Fixtures controls
+    $("fx-prev").addEventListener("click", () => {
+      fxGw = Math.max(1, fxGw - 1);
+      renderFixtures();
+    });
+    $("fx-next").addEventListener("click", () => {
+      fxGw = Math.min(maxGw(), fxGw + 1);
+      renderFixtures();
+    });
+
+    // Squad and transfers
     $("import").addEventListener("click", () => importSquad(session));
     $("setbase").addEventListener("click", () => {
       baseline = squad.slice();
       saveList(BASE, baseline);
-      render();
+      renderTransfers();
     });
     $("clear").addEventListener("click", () => {
       squad = [];
       saveList(KEY, squad);
-      render();
+      renderAll();
     });
     $("ft").addEventListener("change", () => {
       localStorage.setItem(FT_KEY, $("ft").value);
       renderTransfers();
     });
-    $("fx-len").addEventListener("change", renderFixtures);
-    $("q").addEventListener("input", renderPool);
-    $("pos").addEventListener("change", renderPool);
-    $("sort").addEventListener("change", renderPool);
-
     $("squad").addEventListener("click", (e) => {
       const id = Number(e.target.dataset.remove);
       if (!id) return;
       squad = squad.filter((x) => x !== id);
       saveList(KEY, squad);
-      render();
+      renderAll();
     });
-
     $("pool").addEventListener("click", (e) => {
       const id = Number(e.target.dataset.add);
       if (!id || blockReason(byId.get(id))) return;
       squad.push(id);
       saveList(KEY, squad);
-      render();
+      renderAll();
     });
+    $("q").addEventListener("input", renderPool);
+    $("pos").addEventListener("change", renderPool);
+    $("sort").addEventListener("change", renderPool);
 
     $("meta").textContent = `Prices as of ${new Date(snap.generatedAt).toLocaleString()}`;
-    render();
-    renderFixtures();
+    renderAll();
+    loadEo();
   }
 
-  function render() {
+  function renderAll() {
+    // Keep the ticker window inside the gameweeks that remain.
+    const cap = Math.min(MAX_GW, maxGw() - F.gw + 1);
+    count = Math.min(count, cap);
+
+    buildFixtures(count);
     renderSummary();
+    renderTicker();
+    renderEditor();
+    renderFixtures();
     renderSquad();
     renderTransfers();
     renderPool();
+
+    $("gw-count").textContent = String(count);
+    $("gw-minus").disabled = count <= 1;
+    $("gw-plus").disabled = count >= cap;
+    $("edit-fdr").textContent = editing ? "Done editing" : "Edit FDR";
+    document.querySelectorAll("[data-h]").forEach((th) => (th.textContent = `FDR next ${count}`));
   }
 
   function renderSummary() {
@@ -193,15 +292,179 @@
       spent() <= BUDGET;
 
     const sf = squadFdr();
-    const fdrText = sf === null ? "" : ` · squad FDR ${sf.toFixed(1)} over next ${horizon}`;
+    const fdrText = sf === null ? "" : ` · squad FDR ${sf.toFixed(1)} over next ${count}`;
 
     $("summary").textContent =
       `${squad.length}/${SIZE} players · £${left.toFixed(1)}m left · ${parts}${fdrText}` +
       (valid ? " · Valid squad" : "");
-
-    document.querySelectorAll("[data-h]").forEach((th) => (th.textContent = `FDR next ${horizon}`));
   }
 
+  // ---------- Season ticker ----------
+  function renderTicker() {
+    const start = F.gw;
+    const last = gwEnd(start, count);
+    const gws = [];
+    for (let g = start; g <= last; g++) gws.push(g);
+
+    // "team:gw" -> fixtures for that club in that gameweek
+    const grid = new Map();
+    const add = (team, gw, entry) => {
+      const k = `${team}:${gw}`;
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(entry);
+    };
+    for (const f of snap.fixtures) {
+      if (f.gw === null || f.gw < start || f.gw > last) continue;
+      add(f.home, f.gw, { home: true, opp: f.away, diff: diffOf(f, "h") });
+      add(f.away, f.gw, { home: false, opp: f.home, diff: diffOf(f, "a") });
+    }
+
+    const score = (team) =>
+      gws.reduce((s, g) => s + (grid.get(`${team}:${g}`) ?? []).reduce((t, x) => t + x.diff, 0), 0);
+
+    const clubs = [...snap.teams].sort((a, b) => score(a.id) - score(b.id) || a.name.localeCompare(b.name));
+
+    $("tk-head").innerHTML = `<tr>
+      <th>Club</th><th>Mine</th><th class="n">Score</th>
+      ${gws.map((g) => `<th class="c">${g}</th>`).join("")}
+    </tr>`;
+
+    $("tk-body").innerHTML = clubs
+      .map((t) => {
+        const mine =
+          squad
+            .map((id) => byId.get(id))
+            .filter((p) => p && p.team === t.id)
+            .map((p) => esc(p.web_name))
+            .join(", ") || "—";
+
+        const cells = gws
+          .map((g) => {
+            const list = grid.get(`${t.id}:${g}`) ?? [];
+            if (!list.length) return `<td class="c muted">Blank</td>`;
+            return `<td class="cellwrap">${list
+              .map((x) => {
+                const name = teamById.get(x.opp)?.short ?? "";
+                const label = x.home ? name.toUpperCase() : name.toLowerCase();
+                return `<div class="cell ${solid(x.diff)}">${esc(label)}<small>${Math.round(x.diff)}</small></div>`;
+              })
+              .join("")}</td>`;
+          })
+          .join("");
+
+        return `<tr>
+          <td>${esc(t.name)}</td>
+          <td class="mine">${mine}</td>
+          <td class="n"><strong>${score(t.id)}</strong></td>
+          ${cells}
+        </tr>`;
+      })
+      .join("");
+  }
+
+  // Editor: one row per fixture in the ticker window, with a home and an away difficulty.
+  function renderEditor() {
+    const box = $("fdr-editor");
+    box.hidden = !editing;
+    if (!editing) {
+      box.innerHTML = "";
+      return;
+    }
+
+    const start = F.gw;
+    const last = gwEnd(start, count);
+    const items = snap.fixtures
+      .filter((f) => f.gw !== null && f.gw >= start && f.gw <= last)
+      .sort((a, b) => a.gw - b.gw || (a.kickoff ?? "~").localeCompare(b.kickoff ?? "~"));
+
+    const opts = (cur) =>
+      [1, 2, 3, 4, 5].map((d) => `<option value="${d}"${d === cur ? " selected" : ""}>${d}</option>`).join("");
+    const name = (id) => teamById.get(id)?.short ?? "";
+
+    box.innerHTML = `
+      <p class="meta">
+        Change the difficulty of any fixture. Changes are saved on this device and apply to the ticker,
+        fixtures and squad figures. FPL's ratings are used for anything you don't change.
+      </p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>GW</th><th>Fixture</th><th class="c">Home FDR</th><th class="c">Away FDR</th></tr></thead>
+        <tbody>${items
+          .map(
+            (f) => `<tr>
+              <td>${f.gw}</td>
+              <td>${esc(name(f.home))} v ${esc(name(f.away))}</td>
+              <td class="c"><select data-fid="${f.id}" data-side="h" aria-label="Home difficulty">${opts(diffOf(f, "h"))}</select></td>
+              <td class="c"><select data-fid="${f.id}" data-side="a" aria-label="Away difficulty">${opts(diffOf(f, "a"))}</select></td>
+            </tr>`,
+          )
+          .join("")}</tbody>
+      </table></div>
+      <div class="row"><button id="fdr-reset" type="button">Reset all changes</button></div>`;
+  }
+
+  // ---------- Fixtures with effective ownership ----------
+  function renderFixtures() {
+    const max = maxGw();
+    $("fx-gw").textContent = `Gameweek ${fxGw}`;
+    $("fx-prev").disabled = fxGw <= 1;
+    $("fx-next").disabled = fxGw >= max;
+
+    const items = snap.fixtures
+      .filter((f) => f.gw === fxGw)
+      .sort((a, b) => (a.kickoff ?? "~").localeCompare(b.kickoff ?? "~"));
+
+    if (!items.length) {
+      $("fx-list").innerHTML = `<p class="meta">No fixtures in this gameweek.</p>`;
+      return;
+    }
+
+    const time = (iso) =>
+      iso ? new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "TBC";
+
+    const mid = (f) => {
+      if (f.finished) return `${f.home_score ?? 0} – ${f.away_score ?? 0}<small>FT</small>`;
+      if (f.started) return `${f.home_score ?? 0} – ${f.away_score ?? 0}<small>LIVE</small>`;
+      return time(f.kickoff);
+    };
+
+    const side = (teamId, d, isHome) => {
+      const t = teamById.get(teamId);
+      const pill = `<span class="pill ${solid(d)}">${esc(t?.name ?? "")}</span>`;
+      const img = shirt(t?.code);
+      const eo = `<div class="eo">${eoText(teamId)}</div>`;
+      return isHome
+        ? `<div class="fx-side home"><div class="fx-line">${pill}${img}</div>${eo}</div>`
+        : `<div class="fx-side away"><div class="fx-line">${img}${pill}</div>${eo}</div>`;
+    };
+
+    const days = new Map();
+    for (const f of items) {
+      const key = f.kickoff ? new Date(f.kickoff).toDateString() : "TBC";
+      if (!days.has(key)) {
+        const label = f.kickoff
+          ? new Date(f.kickoff).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })
+          : "Date to be confirmed";
+        days.set(key, { label, list: [] });
+      }
+      days.get(key).list.push(f);
+    }
+
+    $("fx-list").innerHTML = [...days.values()]
+      .map(
+        ({ label, list }) => `<h3 class="fx-day">${esc(label)}</h3>${list
+          .map(
+            (f) => `<div class="fx-row">
+              ${side(f.home, diffOf(f, "h"), true)}
+              <div class="fx-mid">${mid(f)}</div>
+              ${side(f.away, diffOf(f, "a"), false)}
+            </div>`,
+          )
+          .join("")}`,
+      )
+      .join("");
+  }
+
+  // ---------- Squad ----------
   function renderSquad() {
     $("squad").innerHTML = squad.length
       ? squad
@@ -262,40 +525,6 @@
     `;
   }
 
-  // ---------- Fixtures ----------
-  function renderFixtures() {
-    const max = snap.events.length || 38;
-    const from = F.gw;
-    const to = Math.min(max, from + Number($("fx-len").value) - 1);
-    const fmt = (iso) =>
-      iso
-        ? new Date(iso).toLocaleString(undefined, {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "TBC";
-
-    const items = snap.fixtures
-      .filter((f) => f.gw !== null && f.gw >= from && f.gw <= to)
-      .sort((a, b) => a.gw - b.gw || (a.kickoff ?? "").localeCompare(b.kickoff ?? ""));
-
-    $("fx-rows").innerHTML = items.length
-      ? items
-          .map((f) => {
-            const mid = f.started || f.finished ? `${f.home_score ?? 0} – ${f.away_score ?? 0}` : fmt(f.kickoff);
-            return `<tr>
-              <td class="r ${F.fdr(f.home_difficulty)}">${F.teamHtml(f.home)}</td>
-              <td class="c"><span class="muted">GW${f.gw}</span><br>${esc(mid)}</td>
-              <td class="${F.fdr(f.away_difficulty)}">${F.teamHtml(f.away)}</td>
-            </tr>`;
-          })
-          .join("")
-      : `<tr><td colspan="3">No fixtures in this range.</td></tr>`;
-  }
-
   // ---------- Pool ----------
   function renderPool() {
     const needle = $("q").value.trim().toLowerCase();
@@ -351,7 +580,7 @@
       baseline = ids.slice();
       saveList(KEY, squad);
       saveList(BASE, baseline);
-      render();
+      renderAll();
       $("meta").textContent = `Imported your squad for gameweek ${gw}.`;
     } catch (err) {
       $("meta").textContent = `Could not import: ${err.message}`;
