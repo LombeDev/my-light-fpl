@@ -17,6 +17,26 @@
   spinner.setAttribute("aria-label", "Loading");
   document.body.append(spinner);
 
+    // ---------- No "Loading…" text: the spinner is the only loading indicator ----------
+  const isLoadingText = (s) => /^\s*This may take moment\s*$/.test(s);
+  const clearLoading = (node) => {
+    if (node.nodeType === 3) {
+      if (isLoadingText(node.nodeValue)) node.nodeValue = "";
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let t;
+    while ((t = walker.nextNode())) if (isLoadingText(t.nodeValue)) t.nodeValue = "";
+  };
+  clearLoading(document.body);
+  new MutationObserver((muts) => {
+    for (const m of muts) {
+      if (m.type === "characterData") clearLoading(m.target);
+      else m.addedNodes.forEach(clearLoading);
+    }
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
+
   // Counts in-flight API requests. Background checks (live, version) are ignored.
   let pending = 0;
   const setBusy = (delta) => {
