@@ -1,5 +1,5 @@
-/* planner.js: season ticker with FDR editing, fixtures with effective ownership, squad builder, transfers.
-   Starts on fpl:ready from app.js. */
+/* planner.js: season ticker with FDR editing, fixtures with effective ownership, squad builder (25 players at a time),
+   transfers. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "planner") return;
   const $ = (id) => document.getElementById(id);
@@ -18,6 +18,7 @@
   const CLUB_MAX = 3;
   const HIT = 4;
   const MAX_GW = 10;
+  const PAGE = 25;
 
   let F;
   let snap;
@@ -32,6 +33,7 @@
   let baseline = [];
   let ovr = readOvr(); // "fixtureId:h" or "fixtureId:a" -> difficulty override
   let editing = false;
+  let poolLimit = PAGE;
 
   // ---------- Storage ----------
   const readList = (key) => {
@@ -87,6 +89,23 @@
     if (countClub(p.team) >= CLUB_MAX) return "Club limit";
     if (spent() + p.now_cost > BUDGET) return "Over budget";
     return null;
+  }
+
+  // "Show more" button under a table. Created once, then kept in sync.
+  function moreBtn(id, tbody, total, limit, onClick) {
+    let btn = document.getElementById(id);
+    if (!btn) {
+      const p = document.createElement("p");
+      btn = document.createElement("button");
+      btn.id = id;
+      btn.type = "button";
+      p.append(btn);
+      tbody.closest(".table-wrap").after(p);
+      btn.addEventListener("click", onClick);
+    }
+    const left = total - limit;
+    btn.hidden = left <= 0;
+    btn.textContent = `Show more (${Math.max(0, left)} left)`;
   }
 
   // ---------- Squad window: next `n` unfinished fixtures per team ----------
@@ -167,6 +186,12 @@
   document.addEventListener("fpl:ready", (e) => {
     if (e.detail) init(e.detail);
   });
+
+  // Any change to the pool's search or filters starts the list again from the first 25.
+  const resetPool = () => {
+    poolLimit = PAGE;
+    renderPool();
+  };
 
   function init(s) {
     snap = s;
@@ -251,9 +276,9 @@
       saveList(KEY, squad);
       renderAll();
     });
-    $("q").addEventListener("input", renderPool);
-    $("pos").addEventListener("change", renderPool);
-    $("sort").addEventListener("change", renderPool);
+    $("q").addEventListener("input", resetPool);
+    $("pos").addEventListener("change", resetPool);
+    $("sort").addEventListener("change", resetPool);
 
     $("meta").textContent = `Prices as of ${new Date(snap.generatedAt).toLocaleString()}`;
     renderAll();
@@ -531,7 +556,7 @@
     const posId = Number($("pos").value);
     const mode = $("sort").value;
 
-    const list = snap.players
+    const all = snap.players
       .filter(
         (p) =>
           (!posId || p.element_type === posId) &&
@@ -541,8 +566,9 @@
         if (mode === "fdr") return sortKey(a.team) - sortKey(b.team) || b.total_points - a.total_points;
         if (mode === "price") return a.now_cost - b.now_cost;
         return b.total_points - a.total_points;
-      })
-      .slice(0, 60);
+      });
+
+    const list = all.slice(0, poolLimit);
 
     $("pool").innerHTML = list.length
       ? list
@@ -563,6 +589,11 @@
           })
           .join("")
       : `<tr><td colspan="8">No players match.</td></tr>`;
+
+    moreBtn("more-pool", $("pool"), all.length, poolLimit, () => {
+      poolLimit += PAGE;
+      renderPool();
+    });
   }
 
   // ---------- Import from FPL ----------
