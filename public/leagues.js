@@ -1,5 +1,5 @@
-/* leagues.js: standings with live points and projections, your live rank, what-if scenarios, and manager pages.
-   Waits for app.js to load the snapshot before drawing shirts. */
+/* leagues.js: standings with live points and projections, your live rank, what-if scenarios,
+   and manager pages in pitch view. Waits for app.js to load the snapshot before drawing shirts. */
 (() => {
   const page = document.body.dataset.page;
   if (page !== "leagues" && page !== "manager") return;
@@ -12,12 +12,15 @@
   const PENDING = `<span class="muted">…</span>`;
   const pts = (n) => Math.round(n).toLocaleString();
 
+  let currentLeague = ""; // set when a league is open, so manager links can carry it
+
   // Resolves once app.js has loaded the snapshot (or failed to), so shirts can be drawn.
   const readyP = new Promise((resolve) =>
     document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
   );
 
-  const helpers = () => window.FPL ?? { teamHtml: () => "", playerHtml: () => "", fdr: () => "", gw: 1 };
+  const helpers = () =>
+    window.FPL ?? { teamHtml: () => "", playerHtml: () => "", fdr: () => "", pitchCard: () => "", pitchHtml: () => "", live: () => new Map(), gw: 1 };
   const player = (id) => helpers().playerHtml(id) || DASH;
 
   async function api(path, options = {}) {
@@ -165,9 +168,10 @@
 
   // ---------- Standings ----------
   function rowHtml(r) {
+    const link = `/manager?id=${r.entry}${currentLeague ? `&league=${currentLeague}` : ""}`;
     return `<tr data-row="${r.entry}" data-net="${r.gw}">
       <td class="n">${r.rank}</td>
-      <td><a href="/manager?id=${r.entry}" data-entry="${r.entry}">${esc(r.manager)}</a><br><span class="muted">${esc(r.team)}</span></td>
+      <td><a href="${link}" data-entry="${r.entry}">${esc(r.manager)}</a><br><span class="muted">${esc(r.team)}</span></td>
       <td data-c="captain">${PENDING}</td>
       <td data-c="chip">${PENDING}</td>
       <td data-c="transfers">${PENDING}</td>
@@ -271,6 +275,7 @@
   }
 
   async function loadLeague(id, pageNo) {
+    currentLeague = id;
     $("meta").textContent = "Loading…";
     const data = await api(`/league/${id}?page=${pageNo}`);
 
@@ -319,12 +324,74 @@
     });
   }
 
-  // ---------- Manager page ----------
+  // ---------- Effective ownership for a manager page ----------
+
+  // Effective ownership across the managers in a league (first page, up to 50).
+  // Owned share plus captain share, so a captain can read above 100%.
+  async function leagueEo(leagueId, gw) {
+    if (!ID.test(leagueId)) return null;
+    try {
+      const data = await api(`/league/${leagueId}?page=1`);
+      const ids = data.results.map((r) => r.entry);
+      const owned = new Map();
+      const captained = new Map();
+      let n = 0;
+
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const picks = await Promise.all(
+          ids.slice(i, i + BATCH).map((e) => api(`/picks/${e}/${gw}`).catch(() => null)),
+        );
+        for (const p of picks) {
+          if (!p || !Array.isArray(p.picks)) continue;
+          n += 1;
+          for (const pk of p.picks) {
+            owned.set(pk.element, (owned.get(pk.element) ?? 0) + 1);
+            if (pk.is_captain) captained.set(pk.element, (captained.get(pk.element) ?? 0) + 1);
+          }
+        }
+      }
+      if (!n) return null;
+
+      const eo = new Map();
+      for (const [id, c] of owned) {
+        eo.set(id, Math.round(((c + (captained.get(id) ?? 0)) / n) * 1000) / 10);
+      }
+      const more = data.hasNext ? " (first 50 managers)" : "";
+      return {
+        eo,
+        note: `Green: effective ownership across ${n} managers in this league${more}. Grey: GW${gw} points, shown during match times.`,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // Fallback when no league is given: effective ownership from the top-500 sample.
+  async function sampleEo(gw) {
+    try {
+      const s = await api("/sample");
+      if (!s.sampled) return null;
+      const eo = new Map();
+      for (const id of new Set([...Object.keys(s.owned), ...Object.keys(s.captain ?? {})])) {
+        eo.set(Number(id), Math.round(((s.owned[id] ?? 0) + (s.captain?.[id] ?? 0)) * 10) / 10);
+      }
+      return {
+        eo,
+        note: `Green: effective ownership across the top ${s.sampled} managers (owned plus captained). Grey: GW${gw} points, shown during match times.`,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // ---------- Manager page (pitch view) ----------
   const currentGw = (snap) =>
     (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
 
   async function initManager() {
-    const id = new URLSearchParams(location.search).get("id") ?? "";
+    const params = new URLSearchParams(location.search);
+    const id = params.get("id") ?? "";
+    const leagueId = params.get("league") ?? "";
     const out = $("content");
 
     if (!ID.test(id)) {
@@ -338,46 +405,49 @@
         readyP.then((s) => s ?? api("/snapshot")),
       ]);
       const gw = currentGw(snap);
+      const F = helpers();
       const picks = await api(`/picks/${id}/${gw}`).catch(() => null);
-
-      const byId = new Map(snap.players.map((p) => [p.id, p]));
-      const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
-
-      const table = (list) => `<table>
-        <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th></th></tr></thead>
-        <tbody>${list
-          .map((pk) => {
-            const p = byId.get(pk.element);
-            const badge = pk.is_captain ? "Captain" : pk.is_vice_captain ? "Vice" : "";
-            return `<tr>
-              <td>${player(pk.element)}</td>
-              <td>${p ? helpers().teamHtml(p.team) : ""}</td>
-              <td>${p ? esc(positions.get(p.element_type)) : ""}</td>
-              <td>${badge}</td>
-            </tr>`;
-          })
-          .join("")}</tbody>
-      </table>`;
+      const eoData = (await leagueEo(leagueId, gw)) ?? (await sampleEo(gw));
 
       const rank = entry.summary_overall_rank?.toLocaleString() ?? "—";
       const gwPts = picks?.entry_history?.points;
-      const gwText = gwPts !== undefined ? ` · GW${gw}: ${gwPts} pts` : "";
 
       $("title").textContent = entry.name;
       document.title = `${entry.name} · FPL`;
 
       out.innerHTML = `
-        <p class="meta">
-          ${esc(entry.player_first_name)} ${esc(entry.player_last_name)} ·
-          ${entry.summary_overall_points} pts · rank ${rank}${gwText}
-        </p>
-        ${
-          picks
-            ? `<h2>Starting XI</h2>${table(picks.picks.filter((x) => x.position <= 11))}
-               <h2>Bench</h2>${table(picks.picks.filter((x) => x.position > 11))}`
-            : `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`
+        <p class="meta">${esc(entry.player_first_name)} ${esc(entry.player_last_name)} · ${entry.summary_overall_points} pts · rank ${rank}${
+          gwPts !== undefined ? ` · GW${gw}: ${gwPts} pts` : ""
+        }</p>
+        <p class="meta" id="pitch-note"></p>
+        <div id="pitch-wrap"></div>`;
+
+      $("pitch-note").textContent = eoData?.note ?? "Effective ownership is not available yet.";
+
+      const draw = () => {
+        if (!picks) {
+          $("pitch-wrap").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
+          return;
         }
-      `;
+        const live = F.live();
+        const hasLive = live.size > 0;
+
+        const cards = picks.picks.map((pk) => {
+          const d = live.get(pk.element);
+          const badge = pk.is_captain ? "C" : pk.is_vice_captain ? "V" : "";
+          return F.pitchCard({
+            id: pk.element,
+            badge,
+            eo: eoData ? (eoData.eo.get(pk.element) ?? 0) : null,
+            pts: hasLive ? (d ? d.p : 0) : null,
+            bench: pk.position > 11,
+          });
+        });
+        $("pitch-wrap").innerHTML = F.pitchHtml(cards);
+      };
+
+      draw();
+      document.addEventListener("fpl:live", draw);
     } catch (err) {
       out.textContent = `Could not load manager. ${err.message}`;
     }
