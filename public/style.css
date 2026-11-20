@@ -462,3 +462,118 @@ tr.you td { font-weight: 700; background: var(--hover); }
 .bub.rise { fill: rgba(26, 127, 55, 0.22); }
 .bub.fall { fill: rgba(128, 128, 140, 0.25); }
 .bub-label { font-size: 11px; fill: var(--text); text-anchor: middle; }
+
+
+
+
+         /* Games: match cards, bonus race and DefCon */
+.gw-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.gw-head h1 { margin: 16px 0 2px; }
+.gw-head p { margin: 0; }
+.gw-controls { display: flex; gap: 8px; align-items: center; }
+
+.cards { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 12px 0 24px; }
+@media (min-width: 820px) {
+  .cards { grid-template-columns: 1fr 1fr; }
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.card-top {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--row);
+  min-height: 34px;
+}
+.pillDone, .pillLive {
+  display: inline-block;
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: var(--row);
+  color: var(--muted);
+}
+.pillLive { background: #ff2d6f; color: #ffffff; }
+
+.card-body {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  padding: 16px 12px;
+  align-items: start;
+}
+.side { text-align: center; }
+.gshirt { height: 56px; width: auto; }
+.tname { font-weight: 700; margin-top: 4px; }
+.goals { font-size: 1.5rem; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.eo { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+.events { margin-top: 10px; font-size: 0.85rem; }
+.ev { margin: 2px 0; white-space: nowrap; }
+.ai {
+  display: inline-block;
+  background: #ff2d6f;
+  color: #ffffff;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.score { text-align: center; padding-top: 22px; }
+.score .big { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.youRow { font-weight: 700; color: var(--green); font-size: 0.85rem; }
+.hide-gains .youRow,
+.hide-gains .gain { display: none; }
+
+.card-foot {
+  border-top: 1px solid var(--row);
+  padding: 8px 12px 12px;
+}
+.block-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 8px 0 6px;
+}
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.side-h { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+
+.brow {
+  display: grid;
+  grid-template-columns: 1fr 70px 34px;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.85rem;
+  margin: 3px 0;
+}
+.bname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bonusTag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0 4px;
+  margin-right: 4px;
+  border-radius: 3px;
+  background: rgba(26, 127, 55, 0.18);
+  color: var(--green);
+}
+.bbar { height: 6px; background: var(--row); display: block; }
+.bbar span { display: block; height: 100%; background: var(--green); }
+.bval { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+.defcon .bbar span { background: #14a3f2; }
