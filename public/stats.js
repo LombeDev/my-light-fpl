@@ -1,8 +1,11 @@
-/* stats.js: season leaderboards with shirts, and double and blank gameweeks. Starts on fpl:ready from app.js. */
+/* stats.js: leaderboards, double and blank gameweeks, sample ownership, chips, captains, managers around you.
+   Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "stats") return;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const pct = (v) => `${Number(v ?? 0).toFixed(1)}%`;
+  const SESSION = "fpl.session";
 
   // [field, label, formatter]
   const STATS = [
@@ -27,6 +30,27 @@
   document.addEventListener("fpl:ready", (e) => {
     if (e.detail) init(e.detail);
   });
+
+  async function api(path) {
+    const res = await fetch(`/api${path}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  }
+
+  // Adds a titled section to the page and returns its note and body elements.
+  function section(title) {
+    const sec = document.createElement("section");
+    sec.innerHTML = `<h2>${esc(title)}</h2><p class="meta note"></p><div class="body"></div>`;
+    document.querySelector("main").append(sec);
+    return { note: sec.querySelector(".note"), body: sec.querySelector(".body") };
+  }
+
+  // head: [{ label, cls }]. rows: HTML string of <tr> rows.
+  const table = (head, rows) => `<div class="table-wrap"><table>
+    <thead><tr>${head.map((h) => `<th class="${h.cls ?? ""}">${h.label}</th>`).join("")}</tr></thead>
+    <tbody>${rows || `<tr><td colspan="${head.length}">No data yet.</td></tr>`}</tbody>
+  </table></div>`;
 
   function init(snap) {
     const F = window.FPL;
@@ -79,7 +103,10 @@
     posSel.addEventListener("change", render);
     minSel.addEventListener("change", render);
     render();
+
     renderFixtureLoad(snap);
+    renderSample(snap);
+    renderAround(snap);
   }
 
   // Double and blank gameweeks from the fixture list, with squad players affected.
@@ -128,21 +155,216 @@
       </tr>`);
     }
 
-    const sec = document.createElement("section");
-    sec.innerHTML = `
-      <h2>Double and blank gameweeks</h2>
-      <p class="meta">Player counts include every squad player in the affected teams, for upcoming gameweeks.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Gameweek</th><th>Double teams</th><th>Blank teams</th>
-              <th class="n">Players in DGW</th><th class="n">Players in BGW</th>
-            </tr>
-          </thead>
-          <tbody>${rows.length ? rows.join("") : `<tr><td colspan="5">No double or blank gameweeks ahead.</td></tr>`}</tbody>
-        </table>
-      </div>`;
-    document.querySelector("main").append(sec);
+    const { note, body } = section("Double and blank gameweeks");
+    note.textContent = "Player counts include every squad player in the affected teams, for upcoming gameweeks.";
+    body.innerHTML = table(
+      [
+        { label: "Gameweek" },
+        { label: "Double teams" },
+        { label: "Blank teams" },
+        { label: "Players in DGW", cls: "n" },
+        { label: "Players in BGW", cls: "n" },
+      ],
+      rows.join(""),
+    );
+  }
+
+  // Effective ownership, captains, chips and template, from a sample of top managers.
+  async function renderSample(snap) {
+    const F = window.FPL;
+    const { note, body } = section("Ownership, captains and chips");
+    const byId = new Map(snap.players.map((p) => [p.id, p]));
+    const pos = new Map(snap.positions.map((p) => [p.id, p.short]));
+
+    let s;
+    try {
+      s = await api("/sample");
+    } catch (err) {
+      body.textContent = `Could not load the sample. ${err.message}`;
+      return;
+    }
+
+    if (!s.sampled) {
+      note.textContent = `Collecting the top ${s.target} managers for gameweek ${s.gw}. Check back in a few minutes.`;
+      return;
+    }
+
+    const coverage = s.sampled < s.target ? " Still collecting, so figures will firm up." : "";
+    const skipped = s.skipped ? ` ${s.skipped} had no picks yet.` : "";
+    note.textContent =
+      `Based on ${s.sampled} of the top ${s.target} managers for gameweek ${s.gw}.${coverage}${skipped} ` +
+      `These are estimates from a sample, not official FPL figures.`;
+
+    // Effective ownership: sample ownership plus sample captaincy.
+    const eo = [...new Set([...Object.keys(s.owned), ...Object.keys(s.captain)])]
+      .map((id) => {
+        const p = byId.get(Number(id));
+        if (!p) return null;
+        const own = s.owned[id] ?? 0;
+        const cap = s.captain[id] ?? 0;
+        return { p, own, cap, eo: Math.round((own + cap) * 10) / 10 };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.eo - a.eo)
+      .slice(0, 25);
+
+    const eoRows = eo
+      .map(
+        (x) => `<tr>
+          <td>${F.playerHtml(x.p.id)}</td>
+          <td>${F.teamHtml(x.p.team)}</td>
+          <td>${esc(pos.get(x.p.element_type))}</td>
+          <td class="n">£${(x.p.now_cost / 10).toFixed(1)}m</td>
+          <td class="n">${pct(x.own)}</td>
+          <td class="n">${pct(x.cap)}</td>
+          <td class="n"><strong>${pct(x.eo)}</strong></td>
+          <td class="n">${pct(x.p.selected_by_percent)}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const caps = Object.entries(s.captain)
+      .map(([id, v]) => ({ p: byId.get(Number(id)), cap: v, vice: s.vice[id] ?? 0 }))
+      .filter((x) => x.p)
+      .sort((a, b) => b.cap - a.cap)
+      .slice(0, 10);
+
+    const capRows = caps
+      .map(
+        (x) => `<tr>
+          <td>${F.playerHtml(x.p.id)}</td>
+          <td>${F.teamHtml(x.p.team)}</td>
+          <td class="n"><strong>${pct(x.cap)}</strong></td>
+          <td class="n">${pct(x.vice)}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const chipRows = s.chips
+      .map(
+        (c) => `<tr>
+          <td>${esc(c.name)}</td>
+          <td class="n">${c.managers}</td>
+          <td class="n">${pct(c.pct)}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const template = Object.entries(s.owned)
+      .map(([id, v]) => ({ p: byId.get(Number(id)), v }))
+      .filter((x) => x.p)
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 15);
+
+    const tmplRows = template
+      .map(
+        (x) => `<tr>
+          <td>${F.playerHtml(x.p.id)}</td>
+          <td>${F.teamHtml(x.p.team)}</td>
+          <td>${esc(pos.get(x.p.element_type))}</td>
+          <td class="n"><strong>${pct(x.v)}</strong></td>
+          <td class="n">${pct(x.p.selected_by_percent)}</td>
+        </tr>`,
+      )
+      .join("");
+
+    body.innerHTML = `
+      <h3>Effective ownership (top 25)</h3>
+      <p class="meta">Effective ownership is the share of the sample owning the player, plus the share captaining them.</p>
+      ${table(
+        [
+          { label: "Player" },
+          { label: "Team" },
+          { label: "Pos" },
+          { label: "Price", cls: "n" },
+          { label: "Sample owned", cls: "n" },
+          { label: "Sample captain", cls: "n" },
+          { label: "EO", cls: "n" },
+          { label: "Overall owned", cls: "n" },
+        ],
+        eoRows,
+      )}
+
+      <h3>Captains</h3>
+      ${table(
+        [
+          { label: "Player" },
+          { label: "Team" },
+          { label: "Captain", cls: "n" },
+          { label: "Vice", cls: "n" },
+        ],
+        capRows,
+      )}
+
+      <h3>Chips this gameweek</h3>
+      ${table(
+        [
+          { label: "Chip" },
+          { label: "Managers", cls: "n" },
+          { label: "Share", cls: "n" },
+        ],
+        chipRows,
+      )}
+
+      <h3>Template (most owned in the sample)</h3>
+      ${table(
+        [
+          { label: "Player" },
+          { label: "Team" },
+          { label: "Pos" },
+          { label: "Sample owned", cls: "n" },
+          { label: "Overall owned", cls: "n" },
+        ],
+        tmplRows,
+      )}
+    `;
+  }
+
+  // Managers near your overall rank, with DGW and BGW players in each squad.
+  async function renderAround(snap) {
+    const { note, body } = section("Managers around you");
+    let session = null;
+    try {
+      session = JSON.parse(localStorage.getItem(SESSION));
+    } catch {}
+
+    if (!session) {
+      body.innerHTML = `<p class="meta">Log in to see the managers ranked around you. <a href="/login">Log in</a></p>`;
+      return;
+    }
+
+    note.textContent = "Five places either side of your overall rank. DGW and BGW show squad players in double or blank teams this gameweek.";
+
+    try {
+      const d = await api(`/around/${session.entryId}`);
+      body.innerHTML = table(
+        [
+          { label: "Rank", cls: "n" },
+          { label: "Manager" },
+          { label: "Team" },
+          { label: "GW", cls: "n" },
+          { label: "Total", cls: "n" },
+          { label: "DGW", cls: "n" },
+          { label: "BGW", cls: "n" },
+          { label: "Captain" },
+        ],
+        d.rows
+          .map(
+            (r) => `<tr${r.you ? ' class="you"' : ""}>
+              <td class="n">${r.rank.toLocaleString()}</td>
+              <td><a href="/manager?id=${r.entry}" data-entry="${r.entry}">${esc(r.manager)}</a></td>
+              <td>${esc(r.team)}</td>
+              <td class="n">${r.gw}</td>
+              <td class="n">${r.total}</td>
+              <td class="n">${r.dgw ?? "–"}</td>
+              <td class="n">${r.bgw ?? "–"}</td>
+              <td>${esc(r.captain || "–")}</td>
+            </tr>`,
+          )
+          .join(""),
+      );
+    } catch (err) {
+      body.textContent = `Could not load managers around you. ${err.message}`;
+    }
   }
 })();
