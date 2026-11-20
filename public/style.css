@@ -236,3 +236,13 @@ nav button:hover {
 @media (prefers-color-scheme: dark) {
   .live { color: #ffb4ab; }
 }
+
+
+/* Phase 2: predictor layout, sample tables, and managers around you */
+.two-col { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 760px) {
+  .two-col { grid-template-columns: 1fr 1fr; }
+}
+h3 { font-size: 1rem; font-weight: 700; margin: 16px 0 6px; }
+progress { width: 80px; height: 10px; vertical-align: middle; accent-color: var(--green); }
+tr.you td { font-weight: 700; background: var(--hover); }
