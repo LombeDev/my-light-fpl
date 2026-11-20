@@ -246,3 +246,26 @@ nav button:hover {
 h3 { font-size: 1rem; font-weight: 700; margin: 16px 0 6px; }
 progress { width: 80px; height: 10px; vertical-align: middle; accent-color: var(--green); }
 tr.you td { font-weight: 700; background: var(--hover); }
+
+
+        /* Pitch view: player cards with shirt, effective ownership and points. Colours are fixed on purpose. */
+.pitch { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+.pcard { width: 112px; text-align: center; font-size: 13px; line-height: 1.25; }
+.pshirt-wrap { position: relative; height: 46px; display: flex; align-items: flex-end; justify-content: center; }
+.pshirt { height: 42px; width: auto; }
+.pstatus { position: absolute; right: 4px; bottom: 2px; font-size: 13px; }
+.pname {
+  background: #22232a;
+  color: #ffffff;
+  font-weight: 700;
+  padding: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.peo { background: #14f195; color: #06140d; font-weight: 700; padding: 3px 0; }
+.peo.zero { background: #000000; color: #ffffff; }
+.ppts { background: #e8eaed; color: #111111; font-weight: 700; padding: 6px 0; }
+.pcard.bench .pname,
+.pcard.bench .ppts { background: #000000; color: #ffffff; }
+.pcard.bench .peo.zero { background: #000000; color: #ffffff; }
