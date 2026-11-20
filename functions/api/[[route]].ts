@@ -3,7 +3,7 @@ import { challenge, login, me, myLeagues } from "../../lib/auth";
 import { league } from "../../lib/leagues";
 import { livescore } from "../../lib/live";
 import { managers } from "../../lib/managers";
-import { around, sampleSummary } from "../../lib/stats";
+import { around, pairsFor, sampleSummary } from "../../lib/stats";
 
 const raw = (body: string, cacheControl: string): Response =>
   new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": cacheControl } });
@@ -41,6 +41,9 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       if (path === "managers") return await managers(request, env);
       if (path === "livescore") return await livescore(request, env);
       if (path === "sample") return await sampleSummary(env, bg);
+
+      const prm = /^pairs\/(\d{1,9})$/.exec(path);
+      if (prm) return await pairsFor(Number(prm[1]), env, bg);
 
       const am = /^around\/(\d{1,9})$/.exec(path);
       if (am) return await around(am[1], env);
