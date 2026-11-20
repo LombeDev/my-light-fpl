@@ -1,5 +1,5 @@
-/* stats.js: leaderboards, double and blank gameweeks, sample ownership, chips, captains, managers around you.
-   Starts on fpl:ready from app.js. */
+/* stats.js: leaderboards, double and blank gameweeks, sample ownership, chips, captains, ownership combinations,
+   managers around you. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "stats") return;
   const $ = (id) => document.getElementById(id);
@@ -106,6 +106,7 @@
 
     renderFixtureLoad(snap);
     renderSample(snap);
+    renderCombos(snap);
     renderAround(snap);
   }
 
@@ -318,6 +319,112 @@
         tmplRows,
       )}
     `;
+  }
+
+  // Most common player pairs, and a lookup for who is owned alongside a chosen player.
+  async function renderCombos(snap) {
+    const F = window.FPL;
+    const { note, body } = section("Ownership combinations");
+    const byId = new Map(snap.players.map((p) => [p.id, p]));
+    const teamShort = new Map(snap.teams.map((t) => [t.id, t.short]));
+
+    let s;
+    try {
+      s = await api("/sample");
+    } catch (err) {
+      body.textContent = `Could not load combinations. ${err.message}`;
+      return;
+    }
+
+    if (!s.sampled) {
+      note.textContent = "Combinations appear once the sample starts collecting managers.";
+      return;
+    }
+
+    note.textContent =
+      `Based on ${s.sampled} sampled managers for gameweek ${s.gw}. ` +
+      "Shares show how often two players appear in the same 15-player squad. Estimates from the sample, not official FPL figures.";
+
+    const name = (id) => F.playerHtml(id) || esc("Unknown");
+
+    const pairRows = (s.pairs ?? [])
+      .map(
+        (x) => `<tr>
+          <td>${name(x.a)}</td>
+          <td>${name(x.b)}</td>
+          <td class="n">${x.managers}</td>
+          <td class="n">${pct(x.pct)}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const choices = Object.entries(s.owned)
+      .map(([id, v]) => ({ p: byId.get(Number(id)), v }))
+      .filter((x) => x.p)
+      .sort((a, b) => b.v - a.v || a.p.web_name.localeCompare(b.p.web_name))
+      .slice(0, 150)
+      .map((x) => `<option value="${x.p.id}">${esc(x.p.web_name)} (${esc(teamShort.get(x.p.team) ?? "")})</option>`)
+      .join("");
+
+    body.innerHTML = `
+      <h3>Most common pairs (top 25)</h3>
+      ${table(
+        [
+          { label: "Player" },
+          { label: "Player" },
+          { label: "Managers", cls: "n" },
+          { label: "Share", cls: "n" },
+        ],
+        pairRows,
+      )}
+
+      <h3>Who else do managers pick?</h3>
+      <p class="meta">Choose a player to see the players they are most often owned alongside. Share is the percentage of that player's owners who also own the other player.</p>
+      <div class="controls">
+        <label for="pair-pick">Player</label>
+        <select id="pair-pick">${choices}</select>
+      </div>
+      <div id="pair-out"></div>
+    `;
+
+    const pick = body.querySelector("#pair-pick");
+    const out = body.querySelector("#pair-out");
+
+    const load = async () => {
+      out.textContent = "Loading…";
+      try {
+        const d = await api(`/pairs/${pick.value}`);
+        if (!d.owners) {
+          out.innerHTML = `<p class="meta">Not enough sampled managers own this player yet.</p>`;
+          return;
+        }
+        const rows = d.partners
+          .map((x) => {
+            const p = byId.get(x.id);
+            return `<tr>
+              <td>${name(x.id)}</td>
+              <td>${esc(p ? teamShort.get(p.team) : "")}</td>
+              <td class="n">${x.managers}</td>
+              <td class="n">${pct(x.pct)}</td>
+            </tr>`;
+          })
+          .join("");
+        out.innerHTML = `<p class="meta">${d.owners} sampled managers own this player.</p>${table(
+          [
+            { label: "Partner" },
+            { label: "Team" },
+            { label: "Managers", cls: "n" },
+            { label: "Share of owners", cls: "n" },
+          ],
+          rows,
+        )}`;
+      } catch (err) {
+        out.textContent = `Could not load. ${err.message}`;
+      }
+    };
+
+    pick.addEventListener("change", load);
+    load();
   }
 
   // Managers near your overall rank, with DGW and BGW players in each squad.
