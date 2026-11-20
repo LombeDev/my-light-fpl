@@ -242,7 +242,7 @@
     const rows = $("rows");
     const more = $("more");
     const meta = $("meta");
-    const STEP = 50;
+    const STEP = 20;
     const SORT = {
       points: "total_points",
       form: "form",
