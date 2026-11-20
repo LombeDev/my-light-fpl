@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Mini-leagues · FPL</title>
-  <meta name="description" content="Fantasy Premier League mini-league standings.">
+  <meta name="description" content="Fantasy Premier League mini-league standings, live points and what-if scenarios.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/leagues.js" defer></script>
@@ -23,6 +23,11 @@
       <ul id="mine-list"></ul>
     </section>
 
+    <section id="live-rank" hidden>
+      <h2>Your live rank</h2>
+      <div id="live-rank-body"></div>
+    </section>
+
     <form id="find" class="controls">
       <label class="sr" for="id">League ID</label>
       <input id="id" inputmode="numeric" placeholder="League ID" autocomplete="off">
@@ -30,19 +35,21 @@
     </form>
 
     <p class="meta" id="meta">Enter a classic league ID, or pick one of your leagues above.</p>
+    <p class="meta" id="live-status"></p>
 
+    <section id="whatif" hidden>
+      <h2>What if?</h2>
+      <div id="whatif-body"></div>
+    </section>
+
+    <h2>Standings</h2>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th class="n">Pos</th>
-            <th>Manager</th>
-            <th>Captain</th>
-            <th>Chip</th>
-            <th>Transfers</th>
-            <th class="n">GW</th>
-            <th class="n">Total</th>
-            <th class="n">Value</th>
+            <th class="n">Pos</th><th>Manager</th><th>Captain</th><th>Chip</th><th>Transfers</th>
+            <th class="n">GW</th><th class="n">Total</th><th class="n">Value</th>
+            <th class="n">Live GW</th><th class="n">Projected</th><th class="n">Live pos</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
