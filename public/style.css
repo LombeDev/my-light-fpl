@@ -633,10 +633,13 @@ tr.you td { font-weight: 700; background: var(--hover); }
 
 
 
-
-/* Pitch view (My team and manager pages). Full width, in perspective, matching the reference layout.
-   Sizes use cqw, a percentage of the pitch width, so the layout scales on every screen. */
+/* Pitch view (My team and manager pages). Cards are sized with clamped limits so they stay in proportion
+   on phones and desktops. Rows are a flex column, so nothing overlaps. */
 .pv {
+  --cw: clamp(68px, 14cqw, 100px); /* card width */
+  --sh: clamp(46px, 11cqw, 78px);  /* shirt height */
+  --cf: clamp(10px, 2.2cqw, 13px); /* card text size */
+
   position: relative;
   width: 100vw;
   margin-left: calc(50% - 50vw);
@@ -644,44 +647,69 @@ tr.you td { font-weight: 700; background: var(--hover); }
   overflow: hidden;
   background: #4fae6e;
 }
-.pv-field { position: relative; aspect-ratio: 1080 / 1095; }
 
-/* The grass and markings tilt back from the viewer, giving the 3D look. */
+.pv-field {
+  position: relative;
+  padding: 0 0 2px;
+}
+
+/* Grass and markings tilt slightly back, giving the 3D look. The cards stay flat so text stays sharp. */
 .pv-grass {
   position: absolute;
   inset: 0;
-  transform: perspective(900px) rotateX(12deg) scale(1.04);
-  transform-origin: 50% 100%;
   background: repeating-linear-gradient(180deg, #5fc282 0 12.5%, #4fb06f 12.5% 25%);
+  transform: perspective(1000px) rotateX(8deg) scale(1.03);
+  transform-origin: 50% 100%;
 }
 .pv-grass svg { display: block; width: 100%; height: 100%; }
 
-/* Cards stay upright and flat, so the text stays sharp. */
-.pv-row { position: absolute; left: 0; right: 0; transform-origin: 50% 100%; }
-.pv-cells { display: grid; justify-items: center; align-items: start; }
+.pv-rows {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 18px;
+  padding: 26px 0 22px;
+}
 
-.pv-card { width: 15cqw; color: #111; line-height: 1.1; }
+.pv-row {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: flex-start;
+  gap: clamp(4px, 2cqw, 16px);
+}
+
+/* Card: shirt on top, then the name, opponent, price and xEO bars stacked tight. */
+.pv-card {
+  width: var(--cw);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--cf);
+  line-height: 1.2;
+  color: #111;
+}
 
 .pv-shirt {
   position: relative;
-  height: 10cqw;
+  height: var(--sh);
   display: flex;
-  justify-content: center;
   align-items: flex-end;
+  justify-content: center;
 }
 .pv-shirt img {
   height: 100%;
   width: auto;
-  filter: drop-shadow(0 0.6cqw 0.5cqw rgba(0, 0, 0, 0.3));
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.3));
 }
 
-/* Captain and vice-captain badges sit at the lower left of the shirt. */
+/* Captain and vice-captain badge, lower left of the shirt. */
 .pv-cap {
   position: absolute;
-  left: 6%;
-  bottom: 0;
-  width: 3.4cqw;
-  height: 3.4cqw;
+  left: 4px;
+  bottom: 2px;
+  width: clamp(18px, 3.2cqw, 24px);
+  height: clamp(18px, 3.2cqw, 24px);
   border-radius: 50%;
   background: #111;
   color: #fff;
@@ -689,18 +717,18 @@ tr.you td { font-weight: 700; background: var(--hover); }
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: max(9px, 2cqw);
-  box-shadow: 0 0 0 0.25cqw #fff;
+  font-size: 11px;
+  box-shadow: 0 0 0 2px #fff;
 }
 
-/* Live points sit at the upper right of the shirt. */
+/* Live points, upper right of the shirt. */
 .pv-pts {
   position: absolute;
   right: 0;
   top: 0;
-  min-width: 4cqw;
-  height: 3.6cqw;
-  padding: 0 1cqw;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 6px;
   border-radius: 999px;
   background: #fff;
   color: #111;
@@ -708,80 +736,75 @@ tr.you td { font-weight: 700; background: var(--hover); }
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: max(10px, 2.1cqw);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 0.3cqw 0.8cqw rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.pv-name,
+.pv-opp,
+.pv-price,
+.pv-eo {
+  padding: 3px 4px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 .pv-name {
   background: #111;
   color: #fff;
   font-weight: 700;
-  text-align: center;
-  padding: 0.7cqw 0.8cqw;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: max(9px, 2.2cqw);
 }
 
 .pv-opp {
-  text-align: center;
-  font-weight: 600;
-  padding: 0.7cqw 0.8cqw;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: max(9px, 2.1cqw);
   background: #ececE6;
+  font-weight: 600;
 }
-.pv-opp.fdr-e { background: #7fe9a4; }
+.pv-opp.fdr-e { background: #9af0bd; }
 .pv-opp.fdr-m { background: #ececE6; }
-.pv-opp.fdr-h { background: #f0365f; color: #fff; }
+.pv-opp.fdr-h { background: #ff6a86; color: #fff; }
 .pv-opp.fdr-x { background: #8e1a3c; color: #fff; }
 .pv-opp.fdr-b { background: #c9ccd2; }
 
 .pv-price {
   background: #fff;
-  text-align: center;
   font-weight: 700;
-  padding: 0.9cqw 0.8cqw;
-  font-size: max(10px, 2.5cqw);
-  font-variant-numeric: tabular-nums;
+  font-size: calc(var(--cf) * 1.15);
+  padding: 4px;
 }
 
 .pv-eo {
   background: #bdeccd;
-  text-align: center;
   font-weight: 600;
-  padding: 0.7cqw 0.8cqw;
-  white-space: nowrap;
-  font-size: max(9px, 2cqw);
-  font-variant-numeric: tabular-nums;
 }
-.pv-dice { font-size: max(9px, 2cqw); vertical-align: 0.1em; }
+.pv-dice { vertical-align: 0.05em; }
 
 /* Chip badge, top left of the pitch. */
 .pv-chip {
   position: absolute;
-  left: 4.6%;
-  top: 14%;
+  left: 14px;
+  top: 14px;
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 1.2cqw;
-  padding: 1.2cqw 2.6cqw;
+  gap: 6px;
+  padding: 6px 14px;
   border-radius: 999px;
   background: #fff;
   color: #111;
   font-weight: 700;
-  font-size: max(10px, 2.4cqw);
-  box-shadow: 0 0.5cqw 1.5cqw rgba(0, 0, 0, 0.2);
+  font-size: var(--cf);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 /* Bench strip below the pitch. */
 .pv-bench {
   position: relative;
-  padding: 1.8cqw 0 2.4cqw;
+  padding: 12px 6px 16px;
   background: linear-gradient(180deg, #dfe2e6 0%, #f4f5f7 100%);
 }
+.pv-bench .pv-row { justify-content: space-evenly; }
+.pv-card.is-bench .pv-name { background: #111; }
