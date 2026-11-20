@@ -9,6 +9,8 @@ const PAGE = 50;
 const TARGET = 500; // top managers sampled per gameweek
 const BATCH = 40; // picks per refresh; with the standings page, this stays under 50 requests
 const EVERY_MS = 5 * 60_000; // at most one sampling batch every five minutes
+/** Pairs kept in KV. Capped to stay within the free plan's per-request CPU limit. */
+const MAX_PAIRS = 5_000;
 
 const CHIP_NAMES: Record<string, string> = {
   wildcard: "Wildcard",
@@ -46,6 +48,8 @@ export interface SampleState {
   captain: Record<string, number>;
   vice: Record<string, number>;
   chips: Record<string, number>;
+  /** "a-b" with a < b, counting managers whose 15-player squad contains both. */
+  pairs: Record<string, number>;
   updated: string;
 }
 
@@ -73,7 +77,19 @@ async function throttle(key: string, everyMs: number): Promise<boolean> {
 }
 
 function fresh(gw: number): SampleState {
-  return { gw, pages: 0, pending: [], seen: 0, skipped: 0, owned: {}, captain: {}, vice: {}, chips: {}, updated: "" };
+  return {
+    gw,
+    pages: 0,
+    pending: [],
+    seen: 0,
+    skipped: 0,
+    owned: {},
+    captain: {},
+    vice: {},
+    chips: {},
+    pairs: {},
+    updated: "",
+  };
 }
 
 async function picksFor(entry: number, gw: number): Promise<Picks | null> {
@@ -88,6 +104,7 @@ async function runBatch(env: Env): Promise<void> {
 
   let st = await env.FPL_KV.get<SampleState>("sample", "json");
   if (!st || st.gw !== gw) st = fresh(gw);
+  if (!st.pairs) st.pairs = {};
 
   const maxPages = TARGET / PAGE;
   if (st.seen >= TARGET) return;
@@ -115,12 +132,30 @@ async function runBatch(env: Env): Promise<void> {
       continue;
     }
     st.seen += 1;
+
+    const ids = p.picks.map((x) => x.element);
     for (const pk of p.picks) {
       bump(st.owned, pk.element);
       if (pk.is_captain) bump(st.captain, pk.element);
       if (pk.is_vice_captain) bump(st.vice, pk.element);
     }
+
+    // Every pair in this squad, bench included, counted once per manager.
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        bump(st.pairs, ids[i] < ids[j] ? `${ids[i]}-${ids[j]}` : `${ids[j]}-${ids[i]}`);
+      }
+    }
+
     if (p.active_chip) bump(st.chips, p.active_chip);
+  }
+
+  // Keep the most common pairs only, so the stored record stays small.
+  if (Object.keys(st.pairs).length > MAX_PAIRS) {
+    const keep = Object.entries(st.pairs)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_PAIRS);
+    st.pairs = Object.fromEntries(keep);
   }
 
   st.updated = new Date().toISOString();
@@ -159,6 +194,16 @@ export async function sampleSummary(env: Env, bg: Bg): Promise<Response> {
         .sort((a, b) => b.managers - a.managers)
     : [];
 
+  const pairs = s
+    ? Object.entries(s.pairs ?? {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 25)
+        .map(([key, managers]) => {
+          const [a, b] = key.split("-").map(Number);
+          return { a, b, managers, pct: pct(managers, n) };
+        })
+    : [];
+
   return new Response(
     JSON.stringify({
       gw,
@@ -170,8 +215,40 @@ export async function sampleSummary(env: Env, bg: Bg): Promise<Response> {
       captain: s ? shares(s.captain) : {},
       vice: s ? shares(s.vice) : {},
       chips,
+      pairs,
     }),
     { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60" } },
+  );
+}
+
+/** Players most often owned alongside one player. Share is of that player's owners. */
+export async function pairsFor(id: number, env: Env, bg: Bg): Promise<Response> {
+  await ensureSample(env, bg);
+
+  const headers = { "Content-Type": "application/json", "Cache-Control": "public, max-age=60" };
+  const snap = await env.FPL_KV.get<Snapshot>("snapshot", "json");
+  if (!snap) return json({ error: "Not available yet." }, 503);
+  const gw = currentGw(snap);
+
+  const st = await env.FPL_KV.get<SampleState>("sample", "json");
+  if (!st || st.gw !== gw) {
+    return new Response(JSON.stringify({ player: id, owners: 0, partners: [] }), { headers });
+  }
+
+  const owners = st.owned[String(id)] ?? 0;
+  const partners: { id: number; managers: number; pct: number }[] = [];
+
+  for (const [key, managers] of Object.entries(st.pairs ?? {})) {
+    const [a, b] = key.split("-").map(Number);
+    if (a !== id && b !== id) continue;
+    const other = a === id ? b : a;
+    partners.push({ id: other, managers, pct: pct(managers, owners) });
+  }
+  partners.sort((x, y) => y.managers - x.managers);
+
+  return new Response(
+    JSON.stringify({ player: id, owners, partners: partners.slice(0, 15) }),
+    { headers },
   );
 }
 
