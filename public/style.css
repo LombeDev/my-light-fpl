@@ -577,3 +577,54 @@ tr.you td { font-weight: 700; background: var(--hover); }
 .bval { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
 .defcon .bbar span { background: #14a3f2; }
+
+
+  /* Leagues: dropdown of your mini-leagues */
+.lg-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.lg-top h1 { margin: 24px 0 8px; }
+
+.lg-dd { position: relative; margin-top: 24px; }
+#lg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+  justify-content: space-between;
+}
+.chev { font-size: 0.8rem; color: var(--muted); }
+
+.lg-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 280px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 50;
+}
+.lg-head {
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--row);
+}
+.lg-menu ul { list-style: none; margin: 0; padding: 0; }
+.lg-menu li { border-bottom: 1px solid var(--row); }
+.lg-menu li:last-child { border-bottom: 0; }
+.lg-menu a {
+  display: block;
+  padding: 10px 14px;
+  color: var(--text);
+  text-decoration: none;
+}
+.lg-menu a:hover { background: var(--hover); }
+.lg-menu a[aria-current="true"] { font-weight: 700; background: var(--hover); }
