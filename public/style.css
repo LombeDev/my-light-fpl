@@ -269,3 +269,85 @@ tr.you td { font-weight: 700; background: var(--hover); }
 .pcard.bench .pname,
 .pcard.bench .ppts { background: #000000; color: #ffffff; }
 .pcard.bench .peo.zero { background: #000000; color: #ffffff; }
+
+
+    /* Planner: season ticker, fixtures with effective ownership. Pill colours are fixed, like the pitch view. */
+.ticker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 24px 0 8px;
+}
+.ticker-head h2 { margin: 0; }
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper .label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.stepper button { min-width: 32px; }
+.stepper strong { min-width: 28px; text-align: center; }
+.stepper #fx-gw { min-width: 110px; }
+
+/* FDR colours, from FPL's 1 (easiest) to 5 (hardest). Used by every FDR element. */
+.fdr-solid-1, .fdr-solid-2 { background: #14f195; color: #06140d; }
+.fdr-solid-3 { background: #e9e8e3; color: #111111; }
+.fdr-solid-4 { background: #ff2d6f; color: #ffffff; }
+.fdr-solid-5 { background: #8b1a3a; color: #ffffff; }
+
+.pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ticker td { padding: 4px 6px; font-size: 0.9rem; }
+.ticker td.mine { font-size: 0.85rem; color: var(--muted); white-space: normal; min-width: 90px; }
+.ticker td.cellwrap { padding: 4px; min-width: 66px; }
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  min-height: 40px;
+  margin: 2px 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.cell small { font-weight: 400; font-size: 0.75rem; }
+
+.fx-day {
+  font-size: 0.95rem;
+  color: var(--muted);
+  margin: 20px 0 4px;
+}
+.fx-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--row);
+}
+.fx-side .fx-line { display: flex; align-items: center; gap: 8px; }
+.fx-side.home .fx-line { justify-content: flex-end; }
+.fx-side.away .fx-line { justify-content: flex-start; }
+.fx-side.home .eo { text-align: right; }
+.fx-side.away .eo { text-align: left; }
+.fx-side .eo { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin-top: 3px; }
+.fx-mid {
+  text-align: center;
+  font-weight: 700;
+  min-width: 90px;
+  font-variant-numeric: tabular-nums;
+}
+.fx-mid small { display: block; font-weight: 400; color: var(--muted); }
