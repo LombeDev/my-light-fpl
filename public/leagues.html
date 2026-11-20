@@ -16,12 +16,19 @@
   </header>
 
   <main>
-    <h1 id="title">Mini-leagues</h1>
+    <div class="lg-top">
+      <h1 id="title">Mini-leagues</h1>
 
-    <section id="mine" hidden>
-      <h2>My leagues</h2>
-      <ul id="mine-list"></ul>
-    </section>
+      <div class="lg-dd" id="mine" hidden>
+        <button id="lg-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lg-menu">
+          <span id="lg-label">Leagues</span><span class="chev" aria-hidden="true">▾</span>
+        </button>
+        <div id="lg-menu" class="lg-menu" hidden>
+          <div class="lg-head">My leagues</div>
+          <ul id="mine-list"></ul>
+        </div>
+      </div>
+    </div>
 
     <section id="live-rank" hidden>
       <h2>Your live rank</h2>
