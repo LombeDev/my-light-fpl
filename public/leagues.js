@@ -1,5 +1,5 @@
-/* leagues.js: standings with live points and projections, your live rank, what-if scenarios,
-   and manager pages in pitch view. Waits for app.js to load the snapshot before drawing shirts. */
+/* leagues.js: standings in groups of 25 (FPL returns 50 per page), live points and projections, your live rank,
+   what-if scenarios, and pitch-view manager pages. Waits for app.js to load the snapshot before drawing shirts. */
 (() => {
   const page = document.body.dataset.page;
   if (page !== "leagues" && page !== "manager") return;
@@ -8,11 +8,18 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const ID = /^\d{1,9}$/;
   const BATCH = 10;
+  const SHOW = 25; // managers shown at a time on a league page
+  const EO_SAMPLE = 25; // managers used for league effective ownership on a manager page
   const DASH = "–";
   const PENDING = `<span class="muted">…</span>`;
   const pts = (n) => Math.round(n).toLocaleString();
 
-  let currentLeague = ""; // set when a league is open, so manager links can carry it
+  let currentLeague = "";
+  let rows = []; // managers on this league page
+  let shown = 0; // how many of `rows` are rendered
+  let liveReady = false;
+  let liveOn = false;
+  let liveByEntry = new Map(); // entry -> projection, with its live position
 
   // Resolves once app.js has loaded the snapshot (or failed to), so shirts can be drawn.
   const readyP = new Promise((resolve) =>
@@ -20,7 +27,15 @@
   );
 
   const helpers = () =>
-    window.FPL ?? { teamHtml: () => "", playerHtml: () => "", fdr: () => "", pitchCard: () => "", pitchHtml: () => "", live: () => new Map(), gw: 1 };
+    window.FPL ?? {
+      teamHtml: () => "",
+      playerHtml: () => "",
+      fdr: () => "",
+      pitchCard: () => "",
+      pitchHtml: () => "",
+      live: () => new Map(),
+      gw: 1,
+    };
   const player = (id) => helpers().playerHtml(id) || DASH;
 
   async function api(path, options = {}) {
@@ -131,24 +146,24 @@
         return;
       }
 
-      const rows = around.rows
+      const list = around.rows
         .filter((r) => out.has(r.entry))
         .map((r) => ({ r, v: project(out.get(r.entry), r.total - r.gw) }))
         .sort((a, b) => b.v.exp - a.v.exp);
 
-      const mine = rows.find((x) => x.r.you);
+      const mine = list.find((x) => x.r.you);
       if (!mine) {
         $("live-rank-body").innerHTML = `<p class="meta">Your live figures are not available yet.</p>`;
         return;
       }
 
-      const others = rows.filter((x) => !x.r.you).map((x) => x.v.exp);
+      const others = list.filter((x) => !x.r.you).map((x) => x.v.exp);
       $("live-rank-body").innerHTML = `
         <p>Projected total: <strong>${pts(mine.v.exp)}</strong> <span class="muted">(${pts(mine.v.low)} to ${pts(mine.v.high)})</span></p>
-        <p class="meta">${whatIf(mine.v, others, rows.length)}</p>
+        <p class="meta">${whatIf(mine.v, others, list.length)}</p>
         <div class="table-wrap"><table>
           <thead><tr><th class="n">Pos</th><th>Manager</th><th class="n">Live GW</th><th class="n">Projected</th></tr></thead>
-          <tbody>${rows
+          <tbody>${list
             .map(
               (x, i) => `<tr${x.r.you ? ' class="you"' : ""}>
                 <td class="n">${i + 1}</td>
@@ -159,7 +174,7 @@
             )
             .join("")}</tbody>
         </table></div>
-        <p class="meta">Compared with the ${rows.length} managers around your overall rank, not the whole table. Your overall live rank is estimated from them.</p>`;
+        <p class="meta">Compared with the ${list.length} managers around your overall rank, not the whole table. Your overall live rank is estimated from them.</p>`;
     } catch (err) {
       sec.hidden = false;
       $("live-rank-body").textContent = `Could not load your live rank. ${err.message}`;
@@ -220,11 +235,11 @@
     });
   }
 
-  async function fillDetails(results) {
+  // Fetches captain, chip, transfers and value for these rows only.
+  async function fillDetails(list) {
     await readyP;
-    const chunks = [];
-    for (let i = 0; i < results.length; i += BATCH) chunks.push(results.slice(i, i + BATCH));
-    for (const chunk of chunks) {
+    for (let i = 0; i < list.length; i += BATCH) {
+      const chunk = list.slice(i, i + BATCH);
       try {
         const { managers } = await api(`/managers?ids=${chunk.map((r) => r.entry).join(",")}`);
         const got = new Set(managers.map((m) => m.entry));
@@ -236,42 +251,82 @@
     }
   }
 
-  // Fills Live GW, Projected and Live pos, then the What if section for your own row.
-  async function fillLive(results) {
+  // Writes live cells for these rows, from projections worked out for the whole page.
+  function applyLiveCells(list) {
+    for (const r of list) {
+      const v = liveOn ? liveByEntry.get(r.entry) : null;
+      const cells = { live: DASH, proj: DASH, pos: DASH };
+      if (v) {
+        cells.live = `${pts(v.gross)}${v.hits ? ` <span class="muted">(−${v.hits})</span>` : ""}`;
+        cells.proj = `${pts(v.exp)} <span class="muted">${pts(v.low)}–${pts(v.high)}</span>`;
+        cells.pos = String(v.pos);
+      }
+      for (const k of Object.keys(cells)) setCell(r.entry, k, cells[k]);
+    }
+  }
+
+  // Works out live figures for every manager on the page, so positions match the full page,
+  // then fills the rows that are currently shown.
+  async function computeLive(list) {
     await readyP;
-    const { out, isLive } = await scoreAll(results.map((r) => r.entry));
+    const { out, isLive } = await scoreAll(list.map((r) => r.entry));
+    liveOn = isLive;
+    liveByEntry = new Map();
+
     $("live-status").textContent = isLive
       ? "Matches are in play. Live figures refresh about once a minute."
       : "No matches in play right now. Live points appear during match windows.";
 
-    if (!isLive) {
-      results.forEach((r) => ["live", "proj", "pos"].forEach((k) => setCell(r.entry, k, DASH)));
-      return;
+    if (isLive) {
+      const board = list
+        .filter((r) => out.has(r.entry))
+        .map((r) => ({ entry: r.entry, ...project(out.get(r.entry), r.total - r.gw) }))
+        .sort((a, b) => b.exp - a.exp);
+      board.forEach((v, i) => liveByEntry.set(v.entry, { ...v, pos: i + 1 }));
+
+      const mine = board.find((v) => v.entry === Number(session()?.entryId));
+      if (mine) {
+        const others = board.filter((v) => v !== mine).map((v) => v.exp);
+        $("whatif-body").innerHTML = `
+          <p>Your projected total is <strong>${pts(mine.exp)}</strong> <span class="muted">(${pts(mine.low)} to ${pts(mine.high)})</span>.</p>
+          <p class="meta">${whatIf(mine, others, board.length)}</p>
+          <p class="meta">Scenarios use FPL's expected points for players yet to play. Other managers are held at their expected totals. These are estimates, and automatic substitutions are not applied.</p>`;
+        $("whatif").hidden = false;
+      }
     }
 
-    const board = results
-      .filter((r) => out.has(r.entry))
-      .map((r) => ({ entry: r.entry, ...project(out.get(r.entry), r.total - r.gw) }))
-      .sort((a, b) => b.exp - a.exp);
+    liveReady = true;
+    applyLiveCells(rows.slice(0, shown));
+  }
 
-    board.forEach((v, i) => {
-      setCell(v.entry, "live", `${pts(v.gross)}${v.hits ? ` <span class="muted">(−${v.hits})</span>` : ""}`);
-      setCell(v.entry, "proj", `${pts(v.exp)} <span class="muted">${pts(v.low)}–${pts(v.high)}</span>`);
-      setCell(v.entry, "pos", String(i + 1));
-    });
-    results
-      .filter((r) => !out.has(r.entry))
-      .forEach((r) => ["live", "proj", "pos"].forEach((k) => setCell(r.entry, k, DASH)));
-
-    const mine = board.find((v) => v.entry === Number(session()?.entryId));
-    if (mine) {
-      const others = board.filter((v) => v !== mine).map((v) => v.exp);
-      $("whatif-body").innerHTML = `
-        <p>Your projected total is <strong>${pts(mine.exp)}</strong> <span class="muted">(${pts(mine.low)} to ${pts(mine.high)})</span>.</p>
-        <p class="meta">${whatIf(mine, others, board.length)}</p>
-        <p class="meta">Scenarios use FPL's expected points for players yet to play. Other managers are held at their expected totals. These are estimates, and automatic substitutions are not applied.</p>`;
-      $("whatif").hidden = false;
+  // Shows the next group of managers and fetches their details.
+  function showMore() {
+    const start = shown;
+    shown = Math.min(rows.length, shown + SHOW);
+    const batch = rows.slice(start, shown);
+    if (batch.length) {
+      $("rows").insertAdjacentHTML("beforeend", batch.map(rowHtml).join(""));
+      fillDetails(batch);
+      if (liveReady) applyLiveCells(batch);
     }
+    updateMore();
+  }
+
+  // The "Show more" button sits under the standings table.
+  function updateMore() {
+    let btn = $("more-league");
+    if (!btn) {
+      const p = document.createElement("p");
+      btn = document.createElement("button");
+      btn.id = "more-league";
+      btn.type = "button";
+      p.append(btn);
+      $("rows").closest(".table-wrap").after(p);
+      btn.addEventListener("click", showMore);
+    }
+    const left = rows.length - shown;
+    btn.hidden = left <= 0;
+    btn.textContent = `Show more (${left} left)`;
   }
 
   async function loadLeague(id, pageNo) {
@@ -279,21 +334,23 @@
     $("meta").textContent = "Loading…";
     const data = await api(`/league/${id}?page=${pageNo}`);
 
+    rows = data.results;
+    shown = 0;
+    liveReady = false;
+
     $("title").textContent = data.league;
     document.title = `${data.league} · FPL`;
-    $("meta").textContent = `Page ${pageNo} · 50 managers per page`;
-
-    $("rows").innerHTML = data.results.length
-      ? data.results.map(rowHtml).join("")
-      : `<tr><td colspan="11">No managers on this page.</td></tr>`;
+    $("meta").textContent = `Page ${pageNo} · ${rows.length} managers · ${SHOW} shown at a time`;
+    $("rows").innerHTML = "";
+    if (!rows.length) $("rows").innerHTML = `<tr><td colspan="11">No managers on this page.</td></tr>`;
 
     $("prev").hidden = pageNo <= 1;
     $("next").hidden = !data.hasNext;
     $("prev").onclick = () => location.assign(`/leagues?id=${id}&page=${pageNo - 1}`);
     $("next").onclick = () => location.assign(`/leagues?id=${id}&page=${pageNo + 1}`);
 
-    await fillDetails(data.results);
-    await fillLive(data.results);
+    computeLive(rows);
+    showMore();
   }
 
   function initLeagues() {
@@ -326,13 +383,12 @@
 
   // ---------- Effective ownership for a manager page ----------
 
-  // Effective ownership across the managers in a league (first page, up to 50).
-  // Owned share plus captain share, so a captain can read above 100%.
+  // Effective ownership across the first managers in a league. Owned share plus captain share.
   async function leagueEo(leagueId, gw) {
     if (!ID.test(leagueId)) return null;
     try {
       const data = await api(`/league/${leagueId}?page=1`);
-      const ids = data.results.map((r) => r.entry);
+      const ids = data.results.slice(0, EO_SAMPLE).map((r) => r.entry);
       const owned = new Map();
       const captained = new Map();
       let n = 0;
@@ -356,10 +412,9 @@
       for (const [id, c] of owned) {
         eo.set(id, Math.round(((c + (captained.get(id) ?? 0)) / n) * 1000) / 10);
       }
-      const more = data.hasNext ? " (first 50 managers)" : "";
       return {
         eo,
-        note: `Green: effective ownership across ${n} managers in this league${more}. Grey: GW${gw} points, shown during match times.`,
+        note: `Green: effective ownership across ${n} managers in this league (first ${EO_SAMPLE}). Grey: GW${gw} points, shown during match times.`,
       };
     } catch {
       return null;
