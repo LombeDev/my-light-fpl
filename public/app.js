@@ -1,4 +1,4 @@
-/* app.js: nav, spinner, snapshot cache, shirts, live updates, players, fixtures, season ticker, my team, login. */
+/* app.js: nav, spinner, snapshot cache, shirts, pitch cards, live updates, players, fixtures, ticker, my team, login. */
 (() => {
   const page = document.body.dataset.page;
   const $ = (id) => document.getElementById(id);
@@ -140,6 +140,45 @@
 
   // FDR class, from 1 (easiest) to 5 (hardest). Returns "" when there is no rating.
   const fdr = (d) => (d >= 1 && d <= 5 ? `fdr-${Math.round(d)}` : "");
+
+  // ---------- Pitch cards ----------
+  // Shirt, name bar with (C) or (V), green effective-ownership bar, grey points bar.
+  // Bench players use black bars. Pass null for eo or pts to show a dash.
+  const STATUS_ICON = { i: "🤕", s: "🟥", d: "❔", u: "⛔" };
+
+  function pitchCard({ id, badge = "", eo = null, pts = null, bench = false }) {
+    const p = playerInfo.get(id);
+    if (!p) return "";
+    const t = teamInfo.get(p.team);
+    const gk = p.element_type === 1;
+    const shirt = t?.code
+      ? `<img class="pshirt" src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
+      : "";
+    const icon = STATUS_ICON[p.status] ? `<span class="pstatus">${STATUS_ICON[p.status]}</span>` : "";
+    const tag = badge ? ` (${badge})` : "";
+    const eoText = eo === null ? "–" : `${eo.toFixed(1)}%`;
+    const ptsText = pts === null ? "–" : pts;
+    const zero = eo === 0 ? " zero" : "";
+
+    return `<div class="pcard${bench ? " bench" : ""}">
+      <div class="pshirt-wrap">${shirt}${icon}</div>
+      <div class="pname">${esc(p.web_name)}${tag}</div>
+      <div class="peo${zero}">${eoText}</div>
+      <div class="ppts">${ptsText}</div>
+    </div>`;
+  }
+
+  const pitchHtml = (cards) => `<div class="pitch">${cards.join("")}</div>`;
+
+  // Effective ownership from the top-500 sample: owned share plus captain share.
+  function sampleEo(s) {
+    if (!s || !s.sampled) return null;
+    const eo = new Map();
+    for (const id of new Set([...Object.keys(s.owned), ...Object.keys(s.captain ?? {})])) {
+      eo.set(Number(id), Math.round(((s.owned[id] ?? 0) + (s.captain?.[id] ?? 0)) * 10) / 10);
+    }
+    return eo;
+  }
 
   // ---------- Live updates ----------
   let liveHash = null;
@@ -445,7 +484,7 @@
     });
   }
 
-  // ---------- My team (live) ----------
+  // ---------- My team (pitch view) ----------
   async function initTeam(snap) {
     const out = $("content");
     if (!session) return signOut();
@@ -453,78 +492,59 @@
     try {
       const me = await api("/me", { headers: { Authorization: `Bearer ${session.token}` } });
       const gw = currentGw(snap);
-      const picks = await api(`/picks/${session.entryId}/${gw}`).catch(() => null);
-
+      const [picks, sample] = await Promise.all([
+        api(`/picks/${session.entryId}/${gw}`).catch(() => null),
+        api("/sample").catch(() => null),
+      ]);
+      const eo = sampleEo(sample);
       const e = me.entry;
       const rank = e.summary_overall_rank?.toLocaleString() ?? "—";
-      const byId = new Map(snap.players.map((p) => [p.id, p]));
-      const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
 
-      // Live cells: "–" before a match window, 0 for a player with no activity, otherwise the value.
-      const liveCell = (hasLive, d, key) => {
-        if (!hasLive) return "–";
-        if (!d) return 0;
-        const v = d[key];
-        return v === null || v === undefined ? "–" : v;
-      };
+      out.innerHTML = `
+        <h1>${esc(e.name)}</h1>
+        <p class="meta" id="team-meta"></p>
+        <p class="meta" id="team-note"></p>
+        <div id="pitch-wrap"></div>`;
 
-      const table = (list, hasLive) => `<table>
-        <thead><tr>
-          <th>Player</th><th>Pos</th>
-          <th class="n">Mins</th><th class="n">Pts</th><th class="n">Bonus</th><th class="n">DC</th>
-          <th>Role</th>
-        </tr></thead>
-        <tbody>${list
-          .map((pk) => {
-            const p = byId.get(pk.element);
-            const d = liveMap.get(pk.element);
-            const badge = pk.is_captain ? "Captain" : pk.is_vice_captain ? "Vice" : "";
-            const mult = pk.multiplier ?? 1;
-            const role = [badge, mult > 1 ? `×${mult}` : ""].filter(Boolean).join(" ");
-            return `<tr>
-              <td>${playerHtml(pk.element)}</td>
-              <td>${esc(p ? positions.get(p.element_type) : "")}</td>
-              <td class="n">${liveCell(hasLive, d, "m")}</td>
-              <td class="n">${liveCell(hasLive, d, "p")}</td>
-              <td class="n">${liveCell(hasLive, d, "bn")}</td>
-              <td class="n">${liveCell(hasLive, d, "dc")}</td>
-              <td>${esc(role)}</td>
-            </tr>`;
-          })
-          .join("")}</tbody>
-      </table>`;
-
-      const render = () => {
+      const draw = () => {
         const hasLive = liveMap.size > 0;
-        const xi = picks ? picks.picks.filter((x) => x.position <= 11) : [];
-        const bench = picks ? picks.picks.filter((x) => x.position > 11) : [];
+        const gwPts = picks?.entry_history?.points;
+        let total = gwPts;
+        if (picks && hasLive) {
+          total = picks.picks
+            .filter((x) => x.position <= 11)
+            .reduce((s, pk) => s + (liveMap.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1), 0);
+        }
+        const totalText = total !== undefined ? ` · GW${gw}: ${total} pts${hasLive ? " (live)" : ""}` : "";
 
-        const liveTotal =
-          hasLive && picks
-            ? xi.reduce((sum, pk) => sum + (liveMap.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1), 0)
-            : null;
-        const total = liveTotal ?? picks?.entry_history?.points;
-        const totalText =
-          total !== undefined ? ` · GW${gw}: ${total} pts${liveTotal !== null ? " (live)" : ""}` : "";
+        $("team-meta").textContent =
+          `${e.player_first_name} ${e.player_last_name} · ${e.summary_overall_points} pts · rank ${rank}${totalText}`;
 
-        out.innerHTML = `
-          <h1>${esc(e.name)}</h1>
-          <p class="meta">
-            ${esc(e.player_first_name)} ${esc(e.player_last_name)} ·
-            ${e.summary_overall_points} pts · rank ${rank}${totalText}
-          </p>
-          ${
-            picks
-              ? `<h2>Starting XI</h2>${table(xi, hasLive)}
-                 <h2>Bench</h2>${table(bench, hasLive)}`
-              : `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`
-          }
-          <p class="meta">Live totals include captaincy multipliers. Automatic substitutions and transfer hits are not applied yet.</p>
-        `;
+        $("team-note").textContent = eo
+          ? `Green: effective ownership across the top ${sample.sampled} managers (owned plus captained). Grey: GW${gw} points, shown during match times.`
+          : `Green: effective ownership, available once the top-manager sample has data. Grey: GW${gw} points, shown during match times.`;
+
+        if (!picks) {
+          $("pitch-wrap").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
+          return;
+        }
+
+        const cards = picks.picks.map((pk) => {
+          const d = liveMap.get(pk.element);
+          const badge = pk.is_captain ? "C" : pk.is_vice_captain ? "V" : "";
+          return pitchCard({
+            id: pk.element,
+            badge,
+            eo: eo ? (eo.get(pk.element) ?? 0) : null,
+            pts: hasLive ? (d ? d.p : 0) : null,
+            bench: pk.position > 11,
+          });
+        });
+        $("pitch-wrap").innerHTML = pitchHtml(cards);
       };
 
-      render();
-      document.addEventListener("fpl:live", render);
+      draw();
+      document.addEventListener("fpl:live", draw);
     } catch (err) {
       if (err.status === 401) return signOut();
       out.textContent = `Could not load your team. ${err.message}`;
@@ -572,7 +592,15 @@
       }
     }
 
-    window.FPL = { teamHtml, playerHtml, fdr, gw: snap ? currentGw(snap) : 1, live: () => liveMap };
+    window.FPL = {
+      teamHtml,
+      playerHtml,
+      fdr,
+      pitchCard,
+      pitchHtml,
+      gw: snap ? currentGw(snap) : 1,
+      live: () => liveMap,
+    };
 
     // Leagues pages always get this event, so their tables still load without the snapshot.
     if (snap || page === "leagues" || page === "manager") {
