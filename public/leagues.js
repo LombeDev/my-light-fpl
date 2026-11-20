@@ -1,5 +1,5 @@
-/* leagues.js: standings in groups of 25 (FPL returns 50 per page), live points and projections, your live rank,
-   what-if scenarios, and pitch-view manager pages. Waits for app.js to load the snapshot before drawing shirts. */
+/* leagues.js: standings in groups of 25, live points and projections, your live rank, what-if scenarios,
+   a dropdown of your leagues, and pitch-view manager pages. Waits for app.js to load the snapshot before drawing shirts. */
 (() => {
   const page = document.body.dataset.page;
   if (page !== "leagues" && page !== "manager") return;
@@ -110,24 +110,50 @@
     if (td) td.innerHTML = html;
   };
 
-  // ---------- My leagues ----------
+  // ---------- Dropdown of your leagues ----------
+  function setupMenu() {
+    const btn = $("lg-btn");
+    const menu = $("lg-menu");
+    if (!btn || btn.dataset.ready) return;
+    btn.dataset.ready = "1";
+
+    const setOpen = (open) => {
+      menu.hidden = !open;
+      btn.setAttribute("aria-expanded", String(open));
+    };
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setOpen(menu.hidden);
+    });
+    document.addEventListener("click", (e) => {
+      if (!menu.contains(e.target)) setOpen(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") setOpen(false);
+    });
+  }
+
   async function showMyLeagues() {
     const s = session();
     if (!s) return;
     try {
       const { leagues } = await api("/me/leagues", { headers: { Authorization: `Bearer ${s.token}` } });
       if (!leagues.length) return;
+
+      const open = new URLSearchParams(location.search).get("id");
       $("mine-list").innerHTML = leagues
         .map(
           (l) =>
-            `<li><a href="/leagues?id=${l.id}">${esc(l.name)}</a>${
-              l.rank ? ` <span class="muted">rank ${Number(l.rank).toLocaleString()}</span>` : ""
-            }</li>`,
+            `<li><a href="/leagues?id=${l.id}" aria-current="${String(String(l.id) === open)}">${esc(l.name)}${
+              l.rank ? ` <span class="muted">· rank ${Number(l.rank).toLocaleString()}</span>` : ""
+            }</a></li>`,
         )
         .join("");
       $("mine").hidden = false;
+      setupMenu();
     } catch {
-      /* not signed in, or FPL unavailable: keep the section hidden */
+      /* not signed in, or FPL unavailable: keep the dropdown hidden */
     }
   }
 
@@ -226,7 +252,7 @@
     set("gw", d.hit > 0 ? `${d.gross} <span class="muted">(−${d.hit})</span> = ${net}` : net);
   }
 
-  // Any placeholder left after a batch becomes a dash, so no row stays "loading" forever.
+  // Any placeholder left after a batch becomes a dash, so no row stays pending forever.
   function blank(entry) {
     const tr = document.querySelector(`tr[data-row="${entry}"]`);
     if (!tr) return;
@@ -331,7 +357,7 @@
 
   async function loadLeague(id, pageNo) {
     currentLeague = id;
-    $("meta").textContent = "Loading…";
+    $("meta").textContent = "";
     const data = await api(`/league/${id}?page=${pageNo}`);
 
     rows = data.results;
@@ -339,6 +365,7 @@
     liveReady = false;
 
     $("title").textContent = data.league;
+    $("lg-label").textContent = data.league;
     document.title = `${data.league} · FPL`;
     $("meta").textContent = `Page ${pageNo} · ${rows.length} managers · ${SHOW} shown at a time`;
     $("rows").innerHTML = "";
