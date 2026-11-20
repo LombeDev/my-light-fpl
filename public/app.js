@@ -541,26 +541,14 @@
           `${e.player_first_name} ${e.player_last_name} · ${e.summary_overall_points} pts · rank ${rank}${totalText}`;
 
         $("team-note").textContent = eo
-          ? `Green: effective ownership across the top ${sample.sampled} managers (owned plus captained). Grey: GW${gw} points, shown during match times.`
-          : `Green: effective ownership, available once the top-manager sample has data. Grey: GW${gw} points, shown during match times.`;
+          ? `Percentages show effective ownership across the top ${sample.sampled} managers. Points show GW${gw}.`
+          : `Percentages show effective ownership once the top-manager sample has data. Points show GW${gw}.`;
 
         if (!picks) {
           $("pitch-wrap").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
           return;
         }
-
-        const cards = picks.picks.map((pk) => {
-          const d = liveMap.get(pk.element);
-          const badge = pk.is_captain ? "C" : pk.is_vice_captain ? "V" : "";
-          return pitchCard({
-            id: pk.element,
-            badge,
-            eo: eo ? (eo.get(pk.element) ?? 0) : null,
-            pts: hasLive ? (d ? d.p : 0) : null,
-            bench: pk.position > 11,
-          });
-        });
-        $("pitch-wrap").innerHTML = pitchHtml(cards);
+        window.PITCH?.render($("pitch-wrap"), picks, { snap, eo, live: liveMap, hasLive, gw });
       };
 
       draw();
@@ -570,6 +558,7 @@
       out.textContent = `Could not load your team. ${err.message}`;
     }
   }
+ 
 
   // ---------- Hover prefetch for any [data-entry] link ----------
   const picksCache = new Map();
