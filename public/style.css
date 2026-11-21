@@ -633,61 +633,75 @@ tr.you td { font-weight: 700; background: var(--hover); }
 
 
 
-/* Pitch view (My team and manager pages). Cards are sized with clamped limits so they stay in proportion
-   on phones and desktops. Rows are a flex column, so nothing overlaps. */
+/* Pitch view (My team and manager pages). Matches the official FPL pitch: smaller cards, shirts above
+   name and opponent bars, a grass pitch with a light perspective, and a bench panel with position labels.
+   Sizes use cqw, so the layout scales with the screen width. */
 .pv {
-  --cw: clamp(68px, 14cqw, 100px); /* card width */
-  --sh: clamp(46px, 11cqw, 78px);  /* shirt height */
-  --cf: clamp(10px, 2.2cqw, 13px); /* card text size */
-
-  position: relative;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
+  width: min(100vw, 600px);
+  margin-left: calc(50% - min(50vw, 300px));
   container-type: inline-size;
-  overflow: hidden;
-  background: #4fae6e;
 }
 
+.pv-inner {
+  --cw: clamp(54px, 15cqw, 84px);   /* card width */
+  --sh: clamp(40px, 11.5cqw, 64px); /* shirt area height */
+  --cf: clamp(9px, 2.6cqw, 12px);   /* card text size */
+  position: relative;
+}
+
+/* Pitch */
 .pv-field {
   position: relative;
-  padding: 0 0 2px;
+  aspect-ratio: 1 / 1.45;
+  overflow: hidden;
+  background: #4a9a5b;
 }
-
-/* Grass and markings tilt slightly back, giving the 3D look. The cards stay flat so text stays sharp. */
 .pv-grass {
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(180deg, #5fc282 0 12.5%, #4fb06f 12.5% 25%);
-  transform: perspective(1000px) rotateX(8deg) scale(1.03);
-  transform-origin: 50% 100%;
+  background: repeating-linear-gradient(180deg, #52a463 0 9.09%, #479656 9.09% 18.18%);
+  transform: perspective(1200px) rotateX(6deg) scale(1.04);
+  transform-origin: 50% 60%;
 }
 .pv-grass svg { display: block; width: 100%; height: 100%; }
 
 .pv-rows {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
   display: flex;
   flex-direction: column;
   justify-content: space-evenly;
-  gap: 18px;
-  padding: 26px 0 22px;
+  padding: 3cqw 0;
 }
-
 .pv-row {
   display: flex;
   justify-content: space-evenly;
   align-items: flex-start;
-  gap: clamp(4px, 2cqw, 16px);
 }
 
-/* Card: shirt on top, then the name, opponent, price and xEO bars stacked tight. */
+.pv-chip {
+  position: absolute;
+  left: 4cqw;
+  top: 4cqw;
+  z-index: 2;
+  padding: 1.4cqw 3.4cqw;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d1024;
+  font-weight: 700;
+  font-size: var(--cf);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Card: shirt on top, then the white name bar and the light opponent bar. */
 .pv-card {
   width: var(--cw);
   display: flex;
   flex-direction: column;
+  color: #1d1024;
   font-size: var(--cf);
-  line-height: 1.2;
-  color: #111;
+  line-height: 1.15;
 }
 
 .pv-shirt {
@@ -696,115 +710,116 @@ tr.you td { font-weight: 700; background: var(--hover); }
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  background: linear-gradient(180deg, rgba(20, 70, 40, 0.45), rgba(20, 70, 40, 0.2));
+  border-radius: 6px 6px 0 0;
 }
 .pv-shirt img {
-  height: 100%;
+  height: 94%;
   width: auto;
-  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.3));
-}
-
-/* Captain and vice-captain badge, lower left of the shirt. */
-.pv-cap {
-  position: absolute;
-  left: 4px;
-  bottom: 2px;
-  width: clamp(18px, 3.2cqw, 24px);
-  height: clamp(18px, 3.2cqw, 24px);
-  border-radius: 50%;
-  background: #111;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 11px;
-  box-shadow: 0 0 0 2px #fff;
-}
-
-/* Live points, upper right of the shirt. */
-.pv-pts {
-  position: absolute;
-  right: 0;
-  top: 0;
-  min-width: 26px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: #fff;
-  color: #111;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-}
-
-.pv-name,
-.pv-opp,
-.pv-price,
-.pv-eo {
-  padding: 3px 4px;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-variant-numeric: tabular-nums;
+  max-width: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
 }
 
 .pv-name {
-  background: #111;
-  color: #fff;
+  background: #ffffff;
   font-weight: 700;
+  text-align: center;
+  padding: 2px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid #e3dde8;
 }
-
 .pv-opp {
-  background: #ececE6;
+  background: #f3eef6;
   font-weight: 600;
-}
-.pv-opp.fdr-e { background: #9af0bd; }
-.pv-opp.fdr-m { background: #ececE6; }
-.pv-opp.fdr-h { background: #ff6a86; color: #fff; }
-.pv-opp.fdr-x { background: #8e1a3c; color: #fff; }
-.pv-opp.fdr-b { background: #c9ccd2; }
-
-.pv-price {
-  background: #fff;
-  font-weight: 700;
-  font-size: calc(var(--cf) * 1.15);
-  padding: 4px;
+  text-align: center;
+  padding: 1px 3px 2px;
+  font-size: calc(var(--cf) * 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 0 0 4px 4px;
 }
 
-.pv-eo {
-  background: #bdeccd;
-  font-weight: 600;
-}
-.pv-dice { vertical-align: 0.05em; }
-
-/* Chip badge, top left of the pitch. */
-.pv-chip {
+/* Captain and vice-captain badges, top left of the shirt. */
+.pv-cap {
   position: absolute;
-  left: 14px;
-  top: 14px;
-  z-index: 2;
+  left: 2px;
+  top: 2px;
+  width: calc(var(--cf) * 1.9);
+  height: calc(var(--cf) * 1.9);
+  border-radius: 50%;
+  background: #ffffff;
+  color: #1d1024;
+  font-weight: 800;
+  font-size: var(--cf);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: #fff;
-  color: #111;
-  font-weight: 700;
-  font-size: var(--cf);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.pv-cap.is-v {
+  background: #1d1024;
+  color: #ffffff;
 }
 
-/* Bench strip below the pitch. */
+/* Live points, top right of the shirt. */
+.pv-pts {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  min-width: calc(var(--cf) * 2.3);
+  height: calc(var(--cf) * 1.9);
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d1024;
+  font-weight: 800;
+  font-size: var(--cf);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* Bench panel */
 .pv-bench {
-  position: relative;
-  padding: 12px 6px 16px;
-  background: linear-gradient(180deg, #dfe2e6 0%, #f4f5f7 100%);
+  margin: 14px 3cqw 0;
+  padding: 12px 2cqw 14px;
+  border-radius: 12px;
+  background: #c9e9d2;
 }
 .pv-bench .pv-row { justify-content: space-evenly; }
-.pv-card.is-bench .pv-name { background: #111; }
+.pv-bench .pv-shirt { background: rgba(255, 255, 255, 0.4); }
+
+.pv-slot {
+  width: var(--cw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pv-slot-label {
+  margin-bottom: 6px;
+  font-weight: 800;
+  color: #2b0f3a;
+  font-size: calc(var(--cf) * 1.25);
+  white-space: nowrap;
+}
+
+.pv-subs-title {
+  text-align: center;
+  font-weight: 800;
+  color: #2b0f3a;
+  font-size: clamp(20px, 6cqw, 28px);
+  margin: 18px 0 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pv-subs-title,
+  .pv-slot-label { color: var(--text); }
+  .pv-bench { background: #1f3a2b; }
+  .pv-bench .pv-shirt { background: rgba(0, 0, 0, 0.25); }
+}
