@@ -633,194 +633,181 @@ tr.you td { font-weight: 700; background: var(--hover); }
 
 
 
-/* Pitch view (My team and manager pages). The pitch is an SVG; cards are sized from the pitch width (cqw). */
-.pv {
-  --cw: clamp(52px, 13.5cqw, 80px);
-  --sh: clamp(30px, 8.5cqw, 54px);
-  --cf: clamp(7px, 1.9cqw, 10px);
+/* Pitch view (My team and manager pages). Players sit on a lightly tinted, greyed pitch background. */
+.pv2 {
+  --cw: clamp(56px, 17vw, 96px);   /* card width */
+  --sh: clamp(42px, 11vw, 66px);   /* shirt height */
+  --cf: clamp(10px, 2.9vw, 13px);  /* card text size */
 
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  container-type: inline-size;
 }
 
-/* 400 x 640 pitch, matching the SVG viewBox. */
-.pv-field {
+.pv2-field {
   position: relative;
-  width: 100%;
-  aspect-ratio: 400 / 640;
+  padding: 16px 10px 22px;
+  background: #c9e8d8;
   overflow: hidden;
 }
-.pv-svg {
+.pv2-field::after {
+  content: "";
   position: absolute;
   inset: 0;
+  background: rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+}
+.pv2-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.pv2-bg svg {
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
 }
 
-.pv-rows {
-  position: absolute;
-  inset: 0;
+.pv2-lines {
+  position: relative;
   z-index: 1;
-}
-
-/* Rows sit at fixed heights on the pitch. Midfield is centred on the halfway line (about 51% down).
-   Each line is scaled slightly, so the pitch reads as receding toward the far goal. */
-.pv-row {
-  position: absolute;
-  left: 0;
-  right: 0;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pv2-line {
+  display: flex;
+  flex-wrap: wrap;
   justify-content: space-evenly;
-  align-items: flex-start;
-}
-.r-gk  { top: 12%; transform: scale(0.88); }
-.r-def { top: 28%; transform: scale(0.94); }
-.r-mid { top: 45%; transform: scale(1); }
-.r-fwd { top: 66%; transform: scale(1.04); }
-
-.pv-chipbadge {
-  position: absolute;
-  left: 4cqw;
-  top: 4cqw;
-  z-index: 2;
-  padding: 1cqw 3cqw;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #111;
-  font-weight: 700;
-  font-size: var(--cf);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  row-gap: 12px;
 }
 
-/* Card: shirt, then name, opponent, price, xEO and next-three chips. Stays flat so text is sharp. */
-.pv-card {
+/* Card: shirt, then name, points box and ownership percentage. */
+.pv2-card {
   width: var(--cw);
   display: flex;
   flex-direction: column;
+  align-items: center;
   font-size: var(--cf);
-  line-height: 1.15;
+  line-height: 1.2;
   color: #111;
   text-align: center;
 }
 
-.pv-shirt {
+.pv2-shirt {
   position: relative;
+  width: 100%;
   height: var(--sh);
   display: flex;
   align-items: flex-end;
   justify-content: center;
 }
-.pv-shirt img {
+.pv2-shirt img {
   height: 100%;
   width: auto;
   max-width: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.25));
 }
 
-/* Captain and vice badges: black circles with white letters, top left of the shirt. */
-.pv-cap {
+/* Status icon, top left of the shirt. */
+.pv2-status {
   position: absolute;
   left: 0;
   top: 0;
-  width: calc(var(--cf) * 1.6);
-  height: calc(var(--cf) * 1.6);
+  width: calc(var(--cf) * 2.2);
+  height: calc(var(--cf) * 2.2);
   border-radius: 50%;
-  background: #111;
-  color: #fff;
-  font-weight: 700;
-  font-size: var(--cf);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Live points: white pill, top right of the shirt. */
-.pv-pts {
-  position: absolute;
-  right: 0;
-  top: 0;
-  min-width: calc(var(--cf) * 2);
-  height: calc(var(--cf) * 1.6);
-  padding: 0 3px;
-  border-radius: 999px;
   background: #ffffff;
-  color: #111;
-  font-weight: 700;
-  font-size: var(--cf);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-variant-numeric: tabular-nums;
+  font-size: calc(var(--cf) * 1.2);
+  line-height: 1;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-.pv-name,
-.pv-opp,
-.pv-price,
-.pv-eo {
-  padding: 1px 2px;
+/* Captain badge: white circle, bottom right of the shirt. */
+.pv2-cap {
+  position: absolute;
+  right: 0;
+  bottom: 6px;
+  width: calc(var(--cf) * 2.1);
+  height: calc(var(--cf) * 2.1);
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #111;
+  font-weight: 800;
+  font-size: var(--cf);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Vice-captain badge: white circle with a blue outline. */
+.pv2-cap.is-v {
+  border: 2px solid #4450d8;
+  color: #4450d8;
+}
+
+.pv2-name {
+  margin-top: 2px;
+  max-width: 100%;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.pv2-pts {
+  margin-top: 4px;
+  min-width: 70%;
+  padding: 3px 0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #111;
+  font-weight: 700;
+  font-size: calc(var(--cf) * 1.2);
   font-variant-numeric: tabular-nums;
 }
-.pv-name {
-  background: #111;
-  color: #fff;
+.pv2-pts.is-zero {
+  background: #d4d8dd;
+  color: #444a52;
+}
+
+.pv2-eo {
+  margin-top: 3px;
+  color: #5b6670;
+  font-weight: 600;
+  font-size: calc(var(--cf) * 1.05);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bench panel below the pitch. */
+.pv2-bench {
+  padding: 12px 10px 18px;
+  background: #eef0f3;
+}
+.pv2-bench-title {
+  margin: 2px 0 10px;
+  text-align: center;
   font-weight: 700;
-}
-.pv-opp {
-  font-weight: 600;
-}
-.pv-price {
-  background: #ffffff;
-  font-weight: 600;
-}
-.pv-eo {
-  background: #c9efd6;
-  font-weight: 500;
-  font-size: calc(var(--cf) * 0.9);
-}
-
-/* FDR colours for the opponent bar and the next-three chips. */
-.fdr-e { background: #7ee89c; color: #06210f; }
-.fdr-m { background: #efefea; color: #111; }
-.fdr-h { background: #ff5577; color: #ffffff; }
-.fdr-x { background: #8e1a3c; color: #ffffff; }
-.fdr-b { background: #cfd3d8; color: #111; }
-
-.pv-next {
-  display: flex;
-  justify-content: center;
-  gap: 1px;
-  margin-top: 1px;
-}
-.pv-chip {
-  min-width: calc(var(--cf) * 2.4);
-  padding: 0 2px;
-  border-radius: 2px;
-  font-size: calc(var(--cf) * 0.8);
-  font-weight: 600;
-  text-transform: lowercase;
-  line-height: 1.35;
-}
-
-/* Bench strip below the pitch. Bench cards sit in normal flow, not absolute positions. */
-.pv-bench {
-  padding: 2.5cqw 2cqw 3cqw;
-  background: linear-gradient(180deg, #d9dce1 0%, #eef0f3 100%);
-}
-.pv-bench-row {
-  position: static;
-  transform: none;
-  justify-content: space-evenly;
+  font-size: 15px;
+  color: #2b3440;
 }
 
 @media (prefers-color-scheme: dark) {
-  .pv-bench { background: linear-gradient(180deg, #2b2f35 0%, #3a3f46 100%); }
-  .pv-price { background: #1b1d21; color: #eee; }
-  .pv-opp.fdr-m { background: #3a3d42; color: #eee; }
+  .pv2-field { background: #1f3a2c; }
+  .pv2-field::after { background: rgba(0, 0, 0, 0.25); }
+  .pv2-card { color: #eee; }
+  .pv2-status,
+  .pv2-cap { background: #20242a; color: #eee; }
+  .pv2-cap.is-v { background: #20242a; color: #8e9bff; border-color: #8e9bff; }
+  .pv2-pts { background: #20242a; color: #eee; }
+  .pv2-pts.is-zero { background: #2d3138; color: #aab0b8; }
+  .pv2-eo { color: #aab0b8; }
+  .pv2-bench { background: #262a30; }
+  .pv2-bench-title { color: #dde1e6; }
 }
