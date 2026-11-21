@@ -15,7 +15,7 @@
         <rect x="90" y="4" width="220" height="80"/>
         <rect x="150" y="4" width="100" height="30"/>
         <line x1="6" y1="294" x2="394" y2="294"/>
-        <path d="M130 294 A70 70 0 0 1 270 294"/>
+        <path d="M170 4 L170 -36 L230 -36 L230 4"/>
       </g>
       <g fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round" vector-effect="non-scaling-stroke">
         <path d="M145 4 L145 -28 L255 -28 L255 4"/>
