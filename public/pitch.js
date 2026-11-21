@@ -1,11 +1,13 @@
 /* pitch.js: the pitch used by My team and manager pages.
-   Advertising board and goal sit above the grass. The grass is a half pitch, then 15 players in a grid of 8 columns.
+   The goal frame and the pitch lines share one drawing, so the goal stands exactly on the top margin line.
+   The advertising board sits above the grass. Then 15 players in a grid of 8 columns.
    No inline styles, so the Content-Security-Policy in _headers does not block anything. */
 (() => {
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-  // Half pitch on a 400 x 300 canvas, stretched to fill the field. The halfway line is the bottom edge.
+  // Half pitch on a 400 x 300 canvas. The top margin line is at y=4, and the goal frame stands on it.
+  // Parts above y=0 are drawn outside the grass, over the advertising board.
   const HALF_PITCH = `
     <svg viewBox="0 0 400 300" preserveAspectRatio="none" aria-hidden="true">
       <g fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke">
@@ -14,6 +16,9 @@
         <rect x="150" y="4" width="100" height="30"/>
         <line x1="6" y1="294" x2="394" y2="294"/>
         <path d="M130 294 A70 70 0 0 1 270 294"/>
+      </g>
+      <g fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round" vector-effect="non-scaling-stroke">
+        <path d="M145 4 L145 -28 L255 -28 L255 4"/>
       </g>
       <circle cx="200" cy="294" r="4" fill="rgba(255,255,255,0.9)"/>
     </svg>`;
@@ -80,7 +85,6 @@
             <span class="pv2-brand">Fantasy</span>
             <span class="pv2-brand">Fantasy</span>
           </div>
-          <div class="pv2-goal"></div>
         </div>
         <div class="pv2-field">
           <div class="pv2-bg">${HALF_PITCH}</div>
