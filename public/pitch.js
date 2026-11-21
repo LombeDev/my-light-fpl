@@ -1,178 +1,88 @@
-/* Pitch view (My team and manager pages). Players sit on a lightly tinted, greyed pitch background. */
-.pv2 {
-  --cw: clamp(56px, 17vw, 96px);   /* card width */
-  --sh: clamp(42px, 11vw, 66px);   /* shirt height */
-  --cf: clamp(10px, 2.9vw, 13px);  /* card text size */
+/* pitch.js: the pitch used by My team and manager pages.
+   A half pitch in light green (penalty box at the top, halfway line and centre circle at the bottom),
+   with all 15 squad players in a grid of 8 columns. Starting XI first, then the bench.
+   No inline styles, so the Content-Security-Policy in _headers does not block anything. */
+(() => {
+  const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-}
+  // Half pitch on a 400 x 300 canvas, stretched to fill the field. The halfway line is the bottom edge.
+  const HALF_PITCH = `
+    <svg viewBox="0 0 400 300" preserveAspectRatio="none" aria-hidden="true">
+      <g fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke">
+        <rect x="6" y="4" width="388" height="290" rx="12"/>
+        <rect x="90" y="4" width="220" height="80"/>
+        <rect x="150" y="4" width="100" height="30"/>
+        <path d="M150 4 L150 -2 L250 -2 L250 4" />
+        <line x1="6" y1="294" x2="394" y2="294"/>
+        <path d="M130 294 A70 70 0 0 1 270 294"/>
+      </g>
+      <circle cx="200" cy="294" r="4" fill="rgba(255,255,255,0.9)"/>
+    </svg>`;
 
-.pv2-field {
-  position: relative;
-  padding: 16px 10px 22px;
-  background: #c9e8d8;
-  overflow: hidden;
-}
-.pv2-field::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.22);
-  pointer-events: none;
-}
-.pv2-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-.pv2-bg svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+  // Renders a squad into `el`.
+  // opts: { snap, eo (Map of effective ownership in %, or null), live (Map), hasLive (bool), gw }
+  function render(el, picks, opts) {
+    const { snap, eo = null, live = new Map(), hasLive = false, gw } = opts;
+    const byId = new Map(snap.players.map((p) => [p.id, p]));
+    const teamById = new Map(snap.teams.map((t) => [t.id, t]));
 
-.pv2-lines {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
+    // Match state per club this gameweek: sleeping before kickoff, dice while playing, none once finished.
+    const state = new Map();
+    for (const f of snap.fixtures) {
+      if (f.gw !== gw) continue;
+      const s = f.finished ? "" : f.started ? "live" : "sleep";
+      state.set(f.home, s);
+      state.set(f.away, s);
+    }
 
-.pv2-line {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-evenly;
-  row-gap: 12px;
-}
+    const card = (pk) => {
+      const p = byId.get(pk.element);
+      if (!p) return "";
+      const t = teamById.get(p.team);
+      const gk = p.element_type === 1;
+      const img = t?.code
+        ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
+        : "";
 
-/* Card: shirt, then name, points box and ownership percentage. */
-.pv2-card {
-  width: var(--cw);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  font-size: var(--cf);
-  line-height: 1.2;
-  color: #111;
-  text-align: center;
-}
+      const st = state.get(p.team);
+      const status =
+        st === "sleep"
+          ? `<span class="pv2-status" aria-label="Not started">😴</span>`
+          : st === "live"
+            ? `<span class="pv2-status" aria-label="In play">🎲</span>`
+            : "";
 
-.pv2-shirt {
-  position: relative;
-  width: 100%;
-  height: var(--sh);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-.pv2-shirt img {
-  height: 100%;
-  width: auto;
-  max-width: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.25));
-}
+      const cap = pk.is_captain
+        ? `<span class="pv2-cap">C</span>`
+        : pk.is_vice_captain
+          ? `<span class="pv2-cap is-v">V</span>`
+          : "";
 
-/* Status icon, top left of the shirt. */
-.pv2-status {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: calc(var(--cf) * 2.2);
-  height: calc(var(--cf) * 2.2);
-  border-radius: 50%;
-  background: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(var(--cf) * 1.2);
-  line-height: 1;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
+      const d = live.get(p.id);
+      const pts = hasLive ? (d ? d.p : 0) : null;
+      const zero = pts === null || pts === 0 ? " is-zero" : "";
+      const xeo = eo ? `${Math.round(eo.get(p.id) ?? 0)}%` : "–";
 
-/* Captain badge: white circle, bottom right of the shirt. */
-.pv2-cap {
-  position: absolute;
-  right: 0;
-  bottom: 6px;
-  width: calc(var(--cf) * 2.1);
-  height: calc(var(--cf) * 2.1);
-  box-sizing: border-box;
-  border-radius: 50%;
-  background: #ffffff;
-  color: #111;
-  font-weight: 800;
-  font-size: var(--cf);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
+      return `<div class="pv2-card">
+        <div class="pv2-shirt">${img}${status}${cap}</div>
+        <div class="pv2-name" title="${esc(p.web_name)}">${esc(p.web_name)}</div>
+        <div class="pv2-pts${zero}">${pts === null ? "–" : pts}</div>
+        <div class="pv2-eo">${xeo}</div>
+      </div>`;
+    };
 
-/* Vice-captain badge: white circle with a blue outline. */
-.pv2-cap.is-v {
-  border: 2px solid #4450d8;
-  color: #4450d8;
-}
+    // Starting XI first in pick order, then the bench, all in one 8-column grid.
+    const ordered = [...picks.picks].sort((a, b) => a.position - b.position);
 
-.pv2-name {
-  margin-top: 2px;
-  max-width: 100%;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+    el.innerHTML = `
+      <div class="pv2">
+        <div class="pv2-field">
+          <div class="pv2-bg">${HALF_PITCH}</div>
+          <div class="pv2-grid">${ordered.map(card).join("")}</div>
+        </div>
+      </div>`;
+  }
 
-.pv2-pts {
-  margin-top: 4px;
-  min-width: 70%;
-  padding: 3px 0;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #111;
-  font-weight: 700;
-  font-size: calc(var(--cf) * 1.2);
-  font-variant-numeric: tabular-nums;
-}
-.pv2-pts.is-zero {
-  background: #d4d8dd;
-  color: #444a52;
-}
-
-.pv2-eo {
-  margin-top: 3px;
-  color: #5b6670;
-  font-weight: 600;
-  font-size: calc(var(--cf) * 1.05);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Bench panel below the pitch. */
-.pv2-bench {
-  padding: 12px 10px 18px;
-  background: #eef0f3;
-}
-.pv2-bench-title {
-  margin: 2px 0 10px;
-  text-align: center;
-  font-weight: 700;
-  font-size: 15px;
-  color: #2b3440;
-}
-
-@media (prefers-color-scheme: dark) {
-  .pv2-field { background: #1f3a2c; }
-  .pv2-field::after { background: rgba(0, 0, 0, 0.25); }
-  .pv2-card { color: #eee; }
-  .pv2-status,
-  .pv2-cap { background: #20242a; color: #eee; }
-  .pv2-cap.is-v { background: #20242a; color: #8e9bff; border-color: #8e9bff; }
-  .pv2-pts { background: #20242a; color: #eee; }
-  .pv2-pts.is-zero { background: #2d3138; color: #aab0b8; }
-  .pv2-eo { color: #aab0b8; }
-  .pv2-bench { background: #262a30; }
-  .pv2-bench-title { color: #dde1e6; }
-}
+  window.PITCH = { render };
+})();
