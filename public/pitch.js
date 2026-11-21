@@ -1,6 +1,5 @@
 /* pitch.js: the pitch used by My team and manager pages.
-   A half pitch in light green (penalty box at the top, halfway line and centre circle at the bottom),
-   with all 15 squad players in a grid of 8 columns. Starting XI first, then the bench.
+   Advertising board and goal sit at the top of a half pitch, then 15 players in a grid of 8 columns.
    No inline styles, so the Content-Security-Policy in _headers does not block anything. */
 (() => {
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
@@ -13,7 +12,6 @@
         <rect x="6" y="4" width="388" height="290" rx="12"/>
         <rect x="90" y="4" width="220" height="80"/>
         <rect x="150" y="4" width="100" height="30"/>
-        <path d="M150 4 L150 -2 L250 -2 L250 4" />
         <line x1="6" y1="294" x2="394" y2="294"/>
         <path d="M130 294 A70 70 0 0 1 270 294"/>
       </g>
@@ -78,6 +76,11 @@
     el.innerHTML = `
       <div class="pv2">
         <div class="pv2-field">
+          <div class="pv2-ad" aria-hidden="true">
+            <span class="pv2-brand">Fantasy</span>
+            <span class="pv2-brand">Fantasy</span>
+          </div>
+          <div class="pv2-goal" aria-hidden="true"></div>
           <div class="pv2-bg">${HALF_PITCH}</div>
           <div class="pv2-grid">${ordered.map(card).join("")}</div>
         </div>
