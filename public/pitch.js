@@ -1,5 +1,5 @@
 /* pitch.js: the pitch used by My team and manager pages.
-   Advertising board and goal sit at the top of a half pitch, then 15 players in a grid of 8 columns.
+   Advertising board and goal sit above the grass. The grass is a half pitch, then 15 players in a grid of 8 columns.
    No inline styles, so the Content-Security-Policy in _headers does not block anything. */
 (() => {
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
@@ -75,12 +75,14 @@
 
     el.innerHTML = `
       <div class="pv2">
-        <div class="pv2-field">
-          <div class="pv2-ad" aria-hidden="true">
+        <div class="pv2-top" aria-hidden="true">
+          <div class="pv2-ad">
             <span class="pv2-brand">Fantasy</span>
             <span class="pv2-brand">Fantasy</span>
           </div>
-          <div class="pv2-goal" aria-hidden="true"></div>
+          <div class="pv2-goal"></div>
+        </div>
+        <div class="pv2-field">
           <div class="pv2-bg">${HALF_PITCH}</div>
           <div class="pv2-grid">${ordered.map(card).join("")}</div>
         </div>
