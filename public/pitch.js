@@ -1,7 +1,6 @@
-/* pitch.js: the pitch used by My team and manager pages, following the LiveFPL layout.
-   Each card: shirt, black name bar, opponent for this gameweek (coloured by FDR), price,
-   xEO, and the next three fixtures as coloured chips. Bench sits on a grey strip below.
-   No inline styles: the Content-Security-Policy in _headers blocks them. */
+/* pitch.js: the pitch used by My team and manager pages.
+   The pitch is one SVG: a grass trapezoid narrowing toward the far goal, thick round markings,
+   a goal with net at each end, and rows placed by class so no inline styles are needed. */
 (() => {
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -14,22 +13,74 @@
     manager: "Assistant Manager",
   };
 
-  // Goalkeeper, defenders, midfielders, forwards.
-  const LINES = [1, 2, 3, 4];
+  // Pitch geometry in SVG units. The viewBox is 400 wide and 640 tall.
+  // The pitch runs from y=60 (far goal line) to y=600 (near goal line), narrowing toward the top.
+  const TOP_Y = 60;
+  const BOTTOM_Y = 600;
+  const TOP_L = 70;
+  const TOP_R = 330;
+  const MID_Y = (TOP_Y + BOTTOM_Y) / 2; // 330, the halfway line and centre circle
 
-  // Pitch markings on a 1000 x 1300 canvas, drawn with the same proportions as the pitch.
+  // Left and right edges of the pitch at a given height, so stripes and lines follow the perspective.
+  const edgeAt = (y) => {
+    const t = (y - TOP_Y) / (BOTTOM_Y - TOP_Y);
+    return { l: TOP_L - TOP_L * t, r: TOP_R + TOP_L * t };
+  };
+
+  // Alternating grass stripes between the two goal lines.
+  function stripes() {
+    const count = 10;
+    const step = (BOTTOM_Y - TOP_Y) / count;
+    let out = "";
+    for (let i = 0; i < count; i++) {
+      const y0 = TOP_Y + i * step;
+      const y1 = y0 + step;
+      const a = edgeAt(y0);
+      const b = edgeAt(y1);
+      const fill = i % 2 === 0 ? "#4fa865" : "#44975a";
+      out += `<polygon points="${a.l},${y0} ${a.r},${y0} ${b.r},${y1} ${b.l},${y1}" fill="${fill}"/>`;
+    }
+    return out;
+  }
+
+  // Every line uses thick round strokes that stay the same width at any size.
+  const LINE = `fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"`;
+
   const MARKINGS = `
-    <svg viewBox="0 0 1000 1300" preserveAspectRatio="none" aria-hidden="true">
-      <g fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="4" vector-effect="non-scaling-stroke">
-        <rect x="40" y="30" width="920" height="1240"/>
-        <line x1="40" y1="650" x2="960" y2="650"/>
-        <circle cx="500" cy="650" r="110"/>
-        <rect x="250" y="30" width="500" height="200"/>
-        <rect x="380" y="30" width="240" height="75"/>
-        <rect x="250" y="1070" width="500" height="200"/>
-        <rect x="380" y="1195" width="240" height="75"/>
-      </g>
-      <circle cx="500" cy="650" r="7" fill="rgba(255,255,255,0.92)"/>
+    <path d="M70 60 L330 60 L400 600 L0 600 Z" ${LINE}/>
+    <path d="M35 330 L365 330" ${LINE}/>
+    <ellipse cx="200" cy="330" rx="100" ry="45" ${LINE}/>
+    <circle cx="200" cy="330" r="5" fill="#ffffff"/>
+    <path d="M120 60 L108 210 L292 210 L280 60" ${LINE}/>
+    <path d="M160 60 L158 110 L242 110 L240 60" ${LINE}/>
+    <circle cx="200" cy="150" r="4" fill="#ffffff"/>
+    <path d="M89 450 L77 600 L323 600 L311 450" ${LINE}/>
+    <path d="M154 600 L155 560 L245 560 L246 600" ${LINE}/>
+    <circle cx="200" cy="520" r="4" fill="#ffffff"/>
+  `;
+
+  // Goals: a net pattern with a white frame, at the far end (top) and near end (bottom).
+  const GOALS = `
+    <path d="M160 60 L162 20 L238 20 L240 60 Z" fill="url(#pvNet)"/>
+    <path d="M160 60 L162 20 L238 20 L240 60" ${LINE}/>
+    <path d="M170 600 L172 630 L228 630 L230 600 Z" fill="url(#pvNet)"/>
+    <path d="M170 600 L172 630 L228 630 L230 600" ${LINE}/>
+  `;
+
+  const NET = `
+    <defs>
+      <pattern id="pvNet" width="8" height="8" patternUnits="userSpaceOnUse">
+        <path d="M0 0 L8 8 M8 0 L0 8" stroke="rgba(255,255,255,0.7)" stroke-width="1"/>
+      </pattern>
+    </defs>
+  `;
+
+  const PITCH_SVG = `
+    <svg class="pv-svg" viewBox="0 0 400 640" preserveAspectRatio="none" aria-hidden="true">
+      ${NET}
+      ${stripes()}
+      ${MARKINGS}
+      ${GOALS}
     </svg>`;
 
   // FDR 1-2 green, 3 neutral, 4 pink, 5 maroon, no rating grey.
@@ -86,7 +137,11 @@
       const d = live.get(p.id);
       const pts = hasLive ? (d ? d.p : 0) : null;
       const xeo = eo ? Math.round(eo.get(p.id) ?? 0) : null;
-      const cap = pk.is_captain ? `<span class="pv-cap">C</span>` : pk.is_vice_captain ? `<span class="pv-cap is-v">V</span>` : "";
+      const cap = pk.is_captain
+        ? `<span class="pv-cap">C</span>`
+        : pk.is_vice_captain
+          ? `<span class="pv-cap">V</span>`
+          : "";
 
       return `<div class="pv-card">
         <div class="pv-shirt">${img}${cap}${pts !== null ? `<span class="pv-pts">${pts}</span>` : ""}</div>
@@ -101,23 +156,27 @@
     const xi = picks.picks.filter((x) => x.position <= 11);
     const bench = picks.picks.filter((x) => x.position > 11);
 
-    const rows = LINES.map((type) => {
-      const list = xi.filter((pk) => byId.get(pk.element)?.element_type === type);
-      if (!list.length) return "";
-      return `<div class="pv-row">${list.map(card).join("")}</div>`;
-    }).join("");
+    // Each outfield line has its own class, so its position and perspective scale come from CSS.
+    const LINE_CLASS = { 1: "r-gk", 2: "r-def", 3: "r-mid", 4: "r-fwd" };
+    const rows = [1, 2, 3, 4]
+      .map((type) => {
+        const list = xi.filter((pk) => byId.get(pk.element)?.element_type === type);
+        if (!list.length) return "";
+        return `<div class="pv-row ${LINE_CLASS[type]}">${list.map(card).join("")}</div>`;
+      })
+      .join("");
 
     const chip = picks.active_chip ? (CHIPS[picks.active_chip] ?? picks.active_chip) : "No Chip";
 
     el.innerHTML = `
       <div class="pv">
         <div class="pv-field">
-          <div class="pv-grass">${MARKINGS}</div>
+          ${PITCH_SVG}
           <div class="pv-chipbadge">${esc(chip)}</div>
           <div class="pv-rows">${rows}</div>
         </div>
         <div class="pv-bench">
-          <div class="pv-row">${bench.map(card).join("")}</div>
+          <div class="pv-row pv-bench-row">${bench.map(card).join("")}</div>
         </div>
       </div>`;
   }
