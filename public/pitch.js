@@ -1,6 +1,7 @@
-/* pitch.js: the pitch used by My team and manager pages, matching the official FPL pitch view.
-   Smaller cards with the shirt above the name and opponent bars, a grass pitch with markings,
-   and a bench panel with position labels. */
+/* pitch.js: the pitch used by My team and manager pages, following the LiveFPL layout.
+   Each card: shirt, black name bar, opponent for this gameweek (coloured by FDR), price,
+   xEO, and the next three fixtures as coloured chips. Bench sits on a grey strip below.
+   No inline styles: the Content-Security-Policy in _headers blocks them. */
 (() => {
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -13,45 +14,55 @@
     manager: "Assistant Manager",
   };
 
-  // Goalkeeper at the top, then defenders, midfielders and forwards.
+  // Goalkeeper, defenders, midfielders, forwards.
   const LINES = [1, 2, 3, 4];
 
-  // Pitch markings. The viewBox has the same proportions as the pitch, so nothing distorts.
+  // Pitch markings on a 1000 x 1300 canvas, drawn with the same proportions as the pitch.
   const MARKINGS = `
-    <svg viewBox="0 0 1000 1450" preserveAspectRatio="none" aria-hidden="true">
-      <g fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="5" vector-effect="non-scaling-stroke">
-        <rect x="30" y="30" width="940" height="1390"/>
-        <line x1="30" y1="725" x2="970" y2="725"/>
-        <circle cx="500" cy="725" r="120"/>
-        <rect x="220" y="30" width="560" height="230"/>
-        <rect x="370" y="30" width="260" height="90"/>
-        <rect x="220" y="1190" width="560" height="230"/>
-        <rect x="370" y="1330" width="260" height="90"/>
-        <path d="M380 260 A130 130 0 0 0 620 260"/>
-        <path d="M380 1190 A130 130 0 0 1 620 1190"/>
+    <svg viewBox="0 0 1000 1300" preserveAspectRatio="none" aria-hidden="true">
+      <g fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="4" vector-effect="non-scaling-stroke">
+        <rect x="40" y="30" width="920" height="1240"/>
+        <line x1="40" y1="650" x2="960" y2="650"/>
+        <circle cx="500" cy="650" r="110"/>
+        <rect x="250" y="30" width="500" height="200"/>
+        <rect x="380" y="30" width="240" height="75"/>
+        <rect x="250" y="1070" width="500" height="200"/>
+        <rect x="380" y="1195" width="240" height="75"/>
       </g>
-      <circle cx="500" cy="725" r="7" fill="rgba(255,255,255,0.9)"/>
+      <circle cx="500" cy="650" r="7" fill="rgba(255,255,255,0.92)"/>
     </svg>`;
 
+  // FDR 1-2 green, 3 neutral, 4 pink, 5 maroon, no rating grey.
+  const fdrClass = (d) => (d <= 2 ? "fdr-e" : d === 3 ? "fdr-m" : d === 4 ? "fdr-h" : d >= 5 ? "fdr-x" : "fdr-b");
+
   // Renders a squad into `el`.
-  // opts: { snap, live (Map of live deltas), hasLive (bool), gw }
+  // opts: { snap, eo (Map of effective ownership in %, or null), live (Map), hasLive (bool), gw }
   function render(el, picks, opts) {
-    const { snap, live = new Map(), hasLive = false, gw } = opts;
+    const { snap, eo = null, live = new Map(), hasLive = false, gw } = opts;
     const byId = new Map(snap.players.map((p) => [p.id, p]));
     const teamById = new Map(snap.teams.map((t) => [t.id, t]));
-    const posById = new Map(snap.positions.map((p) => [p.id, p.short]));
     const short = (id) => teamById.get(id)?.short ?? "";
 
-    // This gameweek's opponents for each club, with venue.
-    const fixtures = new Map();
-    const add = (team, text) => {
-      if (!fixtures.has(team)) fixtures.set(team, []);
-      fixtures.get(team).push(text);
+    // Upcoming fixtures per club, in kickoff order, for the next-three chips.
+    const upcoming = new Map();
+    const pushUpcoming = (team, entry) => {
+      if (!upcoming.has(team)) upcoming.set(team, []);
+      upcoming.get(team).push(entry);
     };
+    const open = snap.fixtures
+      .filter((f) => !f.finished && f.kickoff)
+      .sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+    for (const f of open) {
+      pushUpcoming(f.home, { code: short(f.away), diff: f.home_difficulty });
+      pushUpcoming(f.away, { code: short(f.home), diff: f.away_difficulty });
+    }
+
+    // This gameweek's opponent for each club, with venue and difficulty.
+    const thisGw = new Map();
     for (const f of snap.fixtures) {
       if (f.gw !== gw) continue;
-      add(f.home, `${short(f.away)} (H)`);
-      add(f.away, `${short(f.home)} (A)`);
+      thisGw.set(f.home, { label: `${short(f.away)} (H)`, diff: f.home_difficulty });
+      thisGw.set(f.away, { label: `${short(f.home)} (A)`, diff: f.away_difficulty });
     }
 
     const card = (pk) => {
@@ -63,26 +74,27 @@
         ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
         : "";
 
-      const games = fixtures.get(p.team) ?? [];
-      const opp = games.length ? games.join(" · ") : "Blank";
+      const now = thisGw.get(p.team);
+      const opp = now ? now.label : "Blank";
+      const oppCls = now ? fdrClass(now.diff) : "fdr-b";
+
+      const next = (upcoming.get(p.team) ?? []).slice(0, 3);
+      const chips = next
+        .map((x) => `<span class="pv-chip ${fdrClass(x.diff)}">${esc(x.code)}</span>`)
+        .join("");
 
       const d = live.get(p.id);
       const pts = hasLive ? (d ? d.p : 0) : null;
-
-      const cap = pk.is_captain
-        ? `<span class="pv-cap">C</span>`
-        : pk.is_vice_captain
-          ? `<span class="pv-cap is-v">V</span>`
-          : "";
+      const xeo = eo ? Math.round(eo.get(p.id) ?? 0) : null;
+      const cap = pk.is_captain ? `<span class="pv-cap">C</span>` : pk.is_vice_captain ? `<span class="pv-cap is-v">V</span>` : "";
 
       return `<div class="pv-card">
-        <div class="pv-shirt">
-          ${img}
-          ${cap}
-          ${pts !== null ? `<span class="pv-pts">${pts}</span>` : ""}
-        </div>
+        <div class="pv-shirt">${img}${cap}${pts !== null ? `<span class="pv-pts">${pts}</span>` : ""}</div>
         <div class="pv-name" title="${esc(p.web_name)}">${esc(p.web_name)}</div>
-        <div class="pv-opp" title="${esc(opp)}">${esc(opp)}</div>
+        <div class="pv-opp ${oppCls}">${esc(opp)}</div>
+        <div class="pv-price">£${(p.now_cost / 10).toFixed(1)}m</div>
+        <div class="pv-eo">xEO: ${xeo === null ? "–" : `${xeo}%`}</div>
+        <div class="pv-next">${chips}</div>
       </div>`;
     };
 
@@ -95,40 +107,17 @@
       return `<div class="pv-row">${list.map(card).join("")}</div>`;
     }).join("");
 
-    // Bench labels: GKP for the goalkeeper, then 1., 2., 3. with the position of each outfield sub.
-    let outfield = 0;
-    const benchHtml = bench
-      .map((pk) => {
-        const p = byId.get(pk.element);
-        if (!p) return "";
-        let label;
-        if (p.element_type === 1) {
-          label = "GKP";
-        } else {
-          outfield += 1;
-          label = `${outfield}. ${posById.get(p.element_type) ?? ""}`;
-        }
-        return `<div class="pv-slot">
-          <div class="pv-slot-label">${esc(label)}</div>
-          ${card(pk)}
-        </div>`;
-      })
-      .join("");
-
-    const chip = picks.active_chip ? (CHIPS[picks.active_chip] ?? picks.active_chip) : "No chip";
+    const chip = picks.active_chip ? (CHIPS[picks.active_chip] ?? picks.active_chip) : "No Chip";
 
     el.innerHTML = `
       <div class="pv">
-        <div class="pv-inner">
-          <div class="pv-field">
-            <div class="pv-grass">${MARKINGS}</div>
-            <div class="pv-chip">${esc(chip)}</div>
-            <div class="pv-rows">${rows}</div>
-          </div>
-          <div class="pv-bench">
-            <div class="pv-row">${benchHtml}</div>
-          </div>
-          <div class="pv-subs-title">Substitutes</div>
+        <div class="pv-field">
+          <div class="pv-grass">${MARKINGS}</div>
+          <div class="pv-chipbadge">${esc(chip)}</div>
+          <div class="pv-rows">${rows}</div>
+        </div>
+        <div class="pv-bench">
+          <div class="pv-row">${bench.map(card).join("")}</div>
         </div>
       </div>`;
   }
