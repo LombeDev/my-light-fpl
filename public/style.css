@@ -850,3 +850,63 @@ tr.you td { font-weight: 700; background: var(--hover); }
   .pv2-brand { color: #f1e9ff; }
   .pv2-goal { background-color: rgba(120, 180, 220, 0.25); }
 }
+
+
+/* Goal, net and advertising board at the top of the pitch. These rules come after the pitch rules and override them. */
+.pv2-field {
+  padding-top: 0;
+}
+
+/* Advertising board: cyan to blue gradient, rounded at the top, behind the goal. */
+.pv2-ad {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 12cqw;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14cqw;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(90deg, #6ef3fc 0%, #5ab9f4 45%, #6b7cf6 100%);
+  pointer-events: none;
+}
+.pv2-brand {
+  font-weight: 800;
+  font-size: clamp(14px, 4.6cqw, 22px);
+  color: #2a0b4f;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Goal: white frame with a net behind it, standing in front of the advertising board. */
+.pv2-goal {
+  position: absolute;
+  top: 2.5cqw;
+  left: 50%;
+  width: 22cqw;
+  height: 17cqw;
+  margin-left: -11cqw;
+  z-index: 3;
+  box-sizing: border-box;
+  border: 0.7cqw solid #ffffff;
+  border-bottom: none;
+  background-color: rgba(170, 220, 250, 0.35);
+  background-image:
+    repeating-linear-gradient(60deg, transparent 0 1.6cqw, rgba(255, 255, 255, 0.85) 1.6cqw 1.9cqw),
+    repeating-linear-gradient(-60deg, transparent 0 1.6cqw, rgba(255, 255, 255, 0.85) 1.6cqw 1.9cqw);
+  pointer-events: none;
+}
+
+/* Cards start below the goal and board, so nothing covers the first row. */
+.pv2-grid {
+  padding-top: 19cqw;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pv2-ad { background: linear-gradient(90deg, #2d6c88 0%, #2f5d9a 45%, #3b3f8f 100%); }
+  .pv2-brand { color: #f1e9ff; }
+  .pv2-goal { background-color: rgba(120, 180, 220, 0.25); }
+}
