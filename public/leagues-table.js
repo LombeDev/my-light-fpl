@@ -1,4 +1,4 @@
-/* leagues-table.js: the mini-league table, expandable team views, live projections, your league switcher.
+/* leagues-table.js: the mini-league table, expandable team views, live projections, and the league dropdown.
    Page key: league-table. Loads after app.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "league-table") return;
@@ -166,8 +166,9 @@
     </tr>`;
   }
 
+  const CHIP_CODES_ = CHIP_CODES;
   function chipHtml(d) {
-    return `<div class="lt-chips">${CHIP_CODES.map((c) => {
+    return `<div class="lt-chips">${CHIP_CODES_.map((c) => {
       const active = d.chip === c;
       const used = d.chipsUsed.includes(c) && !active;
       return `<span class="lt-chip${active ? " is-active" : ""}">${c}${used ? ` <b class="lt-x">✕</b>` : ""}</span>`;
@@ -289,20 +290,20 @@
   }
 
   // ---------- Header ----------
-  function setHeader(name, id) {
+  function setHeader(name) {
     $("title").textContent = name;
+    $("lg-label").textContent = name;
     document.title = `${name} · FPL`;
-    $("gw-label").textContent = `Gameweek ${gw}`;
     $("sub").textContent = "Tap View Team to see a manager's squad for this gameweek.";
-    $("act-open").href = `https://fantasy.premierleague.com/leagues/${id}/standings/c`;
-    $("act-open").hidden = false;
-    $("act-close").hidden = false;
   }
 
-  // ---------- Your leagues switcher ----------
+  // ---------- League dropdown ----------
   function setupMenu() {
     const btn = $("lg-btn");
     const menu = $("lg-menu");
+    if (btn.dataset.ready) return;
+    btn.dataset.ready = "1";
+
     const setOpen = (open) => {
       menu.hidden = !open;
       btn.setAttribute("aria-expanded", String(open));
@@ -352,7 +353,7 @@
     liveOn = false;
     liveByEntry = new Map();
 
-    setHeader(data.league, id);
+    setHeader(data.league);
     $("meta").textContent = `Page ${pageNo} · ${rows.length} managers`;
     $("rows").innerHTML = rows.length
       ? ""
@@ -383,8 +384,6 @@
     $("rows").addEventListener("click", (e) => {
       const view = e.target.closest("[data-view]");
       if (view) return toggleTeam(Number(view.dataset.view), view);
-      const back = e.target.closest("[data-tv-back]");
-      if (back) closeTeam(back.closest("tr[data-detail]")?.dataset.detail);
     });
     $("more-league").addEventListener("click", showMore);
 
