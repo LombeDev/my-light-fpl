@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Stats · FPL</title>
-  <meta name="description" content="Fantasy Premier League player stats, ownership, double and blank gameweeks.">
+  <meta name="description" content="Fantasy Premier League player stats: cost, ownership, points, points per match and form.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/stats.js" defer></script>
@@ -28,7 +28,7 @@
         <option value="0">Position</option>
       </select>
       <select id="team" aria-label="Team">
-        <option value="0">All teams</option>
+        <option value="0">All Teams</option>
       </select>
     </div>
 
@@ -43,9 +43,6 @@
       <button id="add-col" type="button" class="st-plus" aria-label="Add the sort stat as a column">+</button>
       <button id="preset" type="button" class="st-preset">Load Preset</button>
     </div>
-
-    <p class="meta" id="meta">Loading…</p>
-    <p class="meta">The gameweek range uses season totals until per-gameweek points are stored.</p>
 
     <div class="st-table-wrap">
       <table class="st-table">
