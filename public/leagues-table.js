@@ -142,14 +142,14 @@
     }
   }
 
-  // ---------- Table rows ----------
+    // ---------- Table rows ----------
   function rowHtml(r) {
     return `<tr data-row="${r.entry}">
       <td class="lt-name">
         <div class="lt-namewrap">
           <img class="lt-shirt" alt="" loading="lazy" hidden>
           <div class="lt-namecol">
-            <a class="lt-team" href="/manager?id=${r.entry}&league=${esc(currentLeague)}" data-entry="${r.entry}">${esc(r.team)}</a>
+            <span class="lt-team">${esc(r.team)}</span>
             <div class="lt-mgr">${esc(r.manager)}</div>
             <button type="button" class="lt-view" data-view="${r.entry}" aria-expanded="false">View Team <span aria-hidden="true">⌄</span></button>
           </div>
@@ -164,7 +164,6 @@
       <td class="lt-trs" data-c="transfers">${PENDING}</td>
     </tr>`;
   }
-
   // Only the active chip is shown. Nothing appears when no chip is active.
   function chipHtml(d) {
     return d.chip ? `<div class="lt-chips"><span class="lt-chip is-active">${esc(d.chip)}</span></div>` : "";
