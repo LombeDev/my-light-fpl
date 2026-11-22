@@ -1408,3 +1408,141 @@ tr.you td { font-weight: 700; background: var(--hover); }
   .fdr-solid-3 { background: #3a404c; }
 }
 
+
+
+
+/* My team: deadline countdown and transfers in and out. Dark blocks match the reference. */
+.dl-box {
+  margin: 14px 0 18px;
+  padding: 14px 10px 12px;
+  border-radius: 12px;
+  background: #050607;
+  color: #ffffff;
+  text-align: center;
+}
+.dl-units {
+  display: flex;
+  justify-content: center;
+  gap: clamp(10px, 4vw, 26px);
+}
+.dl-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 56px;
+}
+.dl-num {
+  font-size: clamp(34px, 11vw, 52px);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dl-lbl {
+  margin-top: 4px;
+  font-size: clamp(11px, 3.2vw, 14px);
+  font-weight: 500;
+  color: #d6dbe2;
+  letter-spacing: 0.02em;
+}
+.dl-date {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #d6dbe2;
+}
+
+.tr-section { margin-top: 20px; }
+.tr-section h2 { margin: 0 0 4px; }
+.tr-search {
+  display: flex;
+  justify-content: center;
+  margin: 10px 0 12px;
+}
+.tr-search input {
+  width: min(100%, 320px);
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--text);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.tr-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  background: #0b0d10;
+}
+.tr-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  color: #ffffff;
+}
+.tr-table th,
+.tr-table td {
+  padding: 8px 8px;
+  border-bottom: 1px solid #1f2328;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.tr-table th {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #c9ced6;
+  text-align: right;
+  background: #0b0d10;
+}
+.tr-table th.tr-namecol { text-align: left; }
+.tr-table th.is-sort { color: #14f195; }
+.tr-table td.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.tr-table td.n.is-sort { font-weight: 700; }
+
+.tr-namecol {
+  text-align: left;
+  min-width: 150px;
+}
+.tr-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tr-shirt {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.tr-shirt-empty {
+  display: inline-block;
+  border-radius: 4px;
+  background: #1c2026;
+}
+.tr-pname {
+  font-weight: 700;
+  font-size: 14px;
+  color: #ffffff;
+}
+.tr-sub {
+  font-size: 11px;
+  color: #8a929c;
+}
+.tr-card {
+  display: inline-block;
+  width: 8px;
+  height: 11px;
+  margin-left: 4px;
+  border-radius: 1px;
+  background: #ffd23f;
+  vertical-align: middle;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tr-wrap,
+  .tr-table th { background: #050607; }
+}
