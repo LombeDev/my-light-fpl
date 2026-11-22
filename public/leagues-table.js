@@ -11,7 +11,6 @@
   const DASH = "–";
   const PENDING = `<span class="muted">…</span>`;
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
-  const CHIP_CODES = ["WC", "BB", "FH", "TC"];
   const pts = (n) => Math.round(n).toLocaleString();
   const kRank = (n) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
 
@@ -166,13 +165,9 @@
     </tr>`;
   }
 
-  const CHIP_CODES_ = CHIP_CODES;
+  // Only the active chip is shown. Nothing appears when no chip is active.
   function chipHtml(d) {
-    return `<div class="lt-chips">${CHIP_CODES_.map((c) => {
-      const active = d.chip === c;
-      const used = d.chipsUsed.includes(c) && !active;
-      return `<span class="lt-chip${active ? " is-active" : ""}">${c}${used ? ` <b class="lt-x">✕</b>` : ""}</span>`;
-    }).join("")}</div>`;
+    return d.chip ? `<div class="lt-chips"><span class="lt-chip is-active">${esc(d.chip)}</span></div>` : "";
   }
 
   function transfersHtml(d) {
@@ -283,7 +278,9 @@
         gw,
         gross: d.gross ?? picks.entry_history?.points ?? 0,
         rank: d.overallRank ?? null,
+        back: true,
       });
+      slot.querySelector("[data-tv-back]")?.addEventListener("click", () => closeTeam(entry));
     } catch (err) {
       slot.textContent = `Could not load team. ${err.message}`;
     }
@@ -383,7 +380,7 @@
 
     $("rows").addEventListener("click", (e) => {
       const view = e.target.closest("[data-view]");
-      if (view) return toggleTeam(Number(view.dataset.view), view);
+      if (view) toggleTeam(Number(view.dataset.view), view);
     });
     $("more-league").addEventListener("click", showMore);
 
