@@ -1546,3 +1546,159 @@ tr.you td { font-weight: 700; background: var(--hover); }
   .tr-wrap,
   .tr-table th { background: #050607; }
 }
+
+
+
+
+/* My team: popular transfers and threats to your rank. Dark cards match the reference. */
+.pt-card,
+.th-card {
+  margin: 22px 0;
+  border-radius: 14px;
+  background: #0b0d10;
+  color: #ffffff;
+  overflow: hidden;
+}
+.pt-head,
+.th-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  font-weight: 700;
+  font-size: 16px;
+  border-bottom: 1px solid #1f2328;
+}
+
+.pt-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 14px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1f2328;
+  font-size: 14px;
+}
+.pt-row:last-child { border-bottom: 0; }
+.pt-pct {
+  color: #14f195;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pt-from,
+.pt-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pt-from img,
+.pt-to img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.pt-name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pt-arrow { color: #8a929c; text-align: center; }
+.pt-num {
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pt-empty { padding: 14px 16px; margin: 0; }
+
+.th-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #1f2328;
+}
+.th-pill {
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid #3a3f46;
+  background: transparent;
+  color: #d6dbe2;
+  font-size: 13px;
+}
+.th-pill.is-on {
+  border-color: #14f195;
+  color: #14f195;
+}
+.th-note {
+  margin: 0;
+  padding: 10px 14px 0;
+  color: #8a929c;
+}
+
+.th-wrap { overflow-x: auto; }
+.th-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: #ffffff;
+}
+.th-table th,
+.th-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid #1f2328;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.th-table th {
+  font-size: 11px;
+  font-weight: 500;
+  color: #c9ced6;
+  text-align: right;
+}
+.th-table th.th-namecol,
+.th-table td.th-namecol {
+  text-align: left;
+  min-width: 170px;
+}
+.th-table td.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.th-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.th-shirt {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.th-pname {
+  font-weight: 700;
+  font-size: 14px;
+}
+.th-sub {
+  font-size: 11px;
+  color: #8a929c;
+}
+.th-more {
+  padding: 10px 14px 14px;
+  margin: 0;
+}
+.th-more button {
+  min-height: 32px;
+  border-radius: 999px;
+  border: 1px solid #3a3f46;
+  background: transparent;
+  color: #d6dbe2;
+}
+
+.up { color: #14f195; }
+.down { color: #ff5577; }
