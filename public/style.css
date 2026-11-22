@@ -1267,3 +1267,15 @@ tr.you td { font-weight: 700; background: var(--hover); }
 }
 .lg-menu a:hover { background: var(--hover); }
 .lg-menu a[aria-current="true"] { font-weight: 700; background: var(--hover); }
+
+
+
+
+/* Team name in the league table is plain text, not a link. */
+.lt-team,
+.lt-team:hover,
+.lt-team:focus {
+  text-decoration: none;
+  cursor: default;
+  color: var(--text);
+}
