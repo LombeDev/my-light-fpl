@@ -1327,3 +1327,83 @@ tr.you td { font-weight: 700; background: var(--hover); }
   right: 0;
   left: auto;
 }
+
+
+
+
+
+
+/* Planner: season ticker. Solid difficulty-coloured blocks, one column per gameweek. */
+.tk-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.tk {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.tk th,
+.tk td {
+  padding: 6px;
+  border-bottom: 1px solid var(--row);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.tk th {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  background: var(--surface);
+}
+.tk-club {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  min-width: 170px;
+  text-align: left;
+}
+.tk-clubcell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+.tk-clubcell .shirt {
+  height: 22px;
+  width: auto;
+}
+.tk-cell {
+  min-width: 72px;
+  text-align: center;
+}
+.tk-blank {
+  color: var(--muted);
+}
+.tk-pill {
+  display: block;
+  width: 100%;
+  margin: 3px 0;
+  padding: 7px 4px;
+  border-radius: 6px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Difficulty colours, solid blocks. Same scale as the fixtures list. */
+.fdr-solid-1 { background: #00ff85; color: #06210f; }
+.fdr-solid-2 { background: #00e86f; color: #06210f; }
+.fdr-solid-3 { background: #4a5260; color: #ffffff; }
+.fdr-solid-4 { background: #f0365f; color: #ffffff; }
+.fdr-solid-5 { background: #7a0d33; color: #ffffff; }
+
+@media (prefers-color-scheme: dark) {
+  .tk th, .tk-club { background: var(--surface); }
+  .fdr-solid-3 { background: #3a404c; }
+}
