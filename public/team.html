@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>My team · FPL</title>
-  <meta name="description" content="Your Fantasy Premier League squad, rank gains, popular transfers and threats to your rank.">
+  <meta name="description" content="Your Fantasy Premier League squad, gameweek summary, rank gains, popular transfers and threats to your rank.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/team-view.js" defer></script>
@@ -17,9 +17,13 @@
   </header>
 
   <main>
-    <h1 id="team-name">My team</h1>
-    <p class="meta" id="team-meta"></p>
-    <p class="meta" id="team-note"></p>
+    <section class="gw-top">
+      <h1 id="team-name">My team</h1>
+      <p class="meta" id="team-meta"></p>
+      <p class="meta" id="team-note"></p>
+    </section>
+
+    <section class="gs-card" id="gs-body" aria-label="Gameweek summary"></section>
 
     <section id="content"></section>
 
