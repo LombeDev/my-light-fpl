@@ -1,10 +1,11 @@
-/* stats.js: the Stats page. A filter bar and a sortable player table, with extra columns and presets.
-   Starts on fpl:ready from app.js. */
+/* stats.js: the Stats page. A filter bar and a sortable player table, with a face or shirt toggle,
+   extra columns and presets. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "stats") return;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
+  const FACES = "https://resources.premierleague.com/premierleague/photos/players/110x140";
   const PAGE = 25;
   const MAX_EXTRA = 4;
 
@@ -48,6 +49,17 @@
     { stat: "xg", extras: ["goals", "assists", "xa"] },
     { stat: "cs", extras: ["bonus", "ict"] },
   ];
+
+  // Player face: FPL's photo for the player (photo code), falling back to the club shirt if it fails.
+  function avatar(p, team, usePhoto) {
+    const shirtUrl = team?.code ? `${SHIRTS}/shirt_${team.code}-66.png` : "";
+    const faceUrl = p.photo ? `${FACES}/p${p.photo}` : "";
+    const src = usePhoto && faceUrl ? faceUrl : shirtUrl;
+    if (!src) return `<span class="st-avatar st-avatar-empty"></span>`;
+    const cls = usePhoto && faceUrl ? "st-avatar is-face" : "st-avatar is-shirt";
+    const fallback = shirtUrl && src !== shirtUrl ? ` data-fallback="${esc(shirtUrl)}"` : "";
+    return `<img class="${cls}" src="${esc(src)}" alt=""${fallback} loading="lazy">`;
+  }
 
   document.addEventListener("fpl:ready", (e) => {
     if (e.detail) init(e.detail);
@@ -105,11 +117,7 @@
         ? list
             .map((p) => {
               const t = teamById.get(p.team);
-              const shirt =
-                state.photo && t?.code
-                  ? `<img class="st-shirt" src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">`
-                  : "";
-              const name = `<td class="st-namecol"><div class="st-name">${shirt}<div>
+              const name = `<td class="st-namecol"><div class="st-name">${avatar(p, t, state.photo)}<div>
                   <div class="st-pname">${esc(p.web_name)}</div>
                   <div class="st-sub">${esc(t?.short ?? "")} • ${esc(positions.get(p.element_type) ?? "")}</div>
                 </div></div></td>`;
@@ -130,6 +138,20 @@
       renderHead();
       renderBody();
     }
+
+    // If a face fails to load, fall back to the club shirt.
+    $("st-body").addEventListener(
+      "error",
+      (e) => {
+        const img = e.target;
+        if (img.tagName === "IMG" && img.dataset.fallback && img.src !== img.dataset.fallback) {
+          img.src = img.dataset.fallback;
+          img.classList.remove("is-face");
+          img.classList.add("is-shirt");
+        }
+      },
+      true,
+    );
 
     // Header clicks: sort by that column, or remove an extra column.
     $("st-head").addEventListener("click", (e) => {
