@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>My team · FPL</title>
-  <meta name="description" content="Your Fantasy Premier League squad, points, rank, live figures, deadline and transfers.">
+  <meta name="description" content="Your Fantasy Premier League squad, popular transfers and threats to your rank.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/team-view.js" defer></script>
@@ -21,31 +21,24 @@
     <p class="meta" id="team-meta"></p>
     <p class="meta" id="team-note"></p>
 
-    <section class="dl-box" aria-live="polite">
-      <div class="dl-units">
-        <div class="dl-unit"><span id="dl-d" class="dl-num">--</span><span class="dl-lbl">Days</span></div>
-        <div class="dl-unit"><span id="dl-h" class="dl-num">--</span><span class="dl-lbl">Hours</span></div>
-        <div class="dl-unit"><span id="dl-m" class="dl-num">--</span><span class="dl-lbl">Mins</span></div>
-        <div class="dl-unit"><span id="dl-s" class="dl-num">--</span><span class="dl-lbl">Secs</span></div>
-      </div>
-      <p class="dl-date" id="dl-date"></p>
-    </section>
-
     <section id="content"></section>
 
-    <section class="tr-section">
-      <h2>Transfers in and out</h2>
-      <p class="meta" id="tr-meta">Gameweek transfers across all managers.</p>
-      <div class="tr-search">
-        <input id="tr-q" type="search" placeholder="Search player" aria-label="Search player">
-      </div>
-      <div class="tr-wrap">
-        <table class="tr-table">
-          <thead id="tr-head"></thead>
-          <tbody id="tr-body"></tbody>
+    <section class="pt-card">
+      <div class="pt-head"><span aria-hidden="true">🔥</span> Popular transfers (Top 10k)</div>
+      <div id="pop-body"></div>
+    </section>
+
+    <section class="th-card">
+      <div class="th-head"><span aria-hidden="true">⚠️</span> Main threats to your rank</div>
+      <div class="th-pills" id="th-pills"></div>
+      <p class="meta th-note" id="th-note"></p>
+      <div class="th-wrap">
+        <table class="th-table">
+          <thead id="th-head"></thead>
+          <tbody id="th-body"></tbody>
         </table>
       </div>
-      <p class="gw"><button id="tr-more" type="button" hidden>Show more</button></p>
+      <p class="th-more"><button id="th-more" type="button" hidden>Show more</button></p>
     </section>
   </main>
 
