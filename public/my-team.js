@@ -1,5 +1,5 @@
-/* my-team.js: My team page. The squad in the team view, Rank Gains, Popular transfers (Top 10k) and
-   Main threats to your rank. Page key: team-view. Loads after app.js and team-view.js. */
+/* my-team.js: My team page. Gameweek summary at the top, the squad, Rank Gains, Popular transfers (Top 10k)
+   and Main threats to your rank. Page key: team-view. Loads after app.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
@@ -65,7 +65,6 @@
   }
 
   // Club state this gameweek: finished, started (some fixtures begun), or sleep (not yet started).
-  // A club with no fixture this gameweek is absent from the map.
   function clubStates() {
     const seen = new Map();
     for (const f of snap.fixtures) {
@@ -85,14 +84,124 @@
     return out;
   }
 
-  // Price progress toward the next change, signed. Positive means rising.
   const progressOf = (p) => ((p.transfers_in - p.transfers_out) / RISE_NET) * 100;
 
-  // ---------- Rank Gains ----------
+  // ---------- Gameweek summary ----------
+  // Figures are worked out from data the site has. Safety, off top 10k and off 3m need data we
+  // do not store, so they show dashes. Pre and post substitution ranks use the overall rank.
+  function summaryData() {
+    const live = window.FPL?.live?.() ?? new Map();
+    const xi = picks.picks.filter((x) => x.position <= 11);
+    const bench = picks.picks.filter((x) => x.position > 11);
 
-  // How many overall places one point is worth near your rank. Taken from the managers around you:
-  // places between the highest and lowest of them, divided by the points between them.
-  // Falls back to a rough rank-based value when those managers all have the same total.
+    const liveXi = xi.reduce((s, pk) => s + (live.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1), 0);
+    const benchPts = bench.reduce((s, pk) => s + (live.get(pk.element)?.p ?? 0), 0);
+
+    // Rank history from the overall rank for this gameweek and the previous one, from the snapshot's events.
+    const rank = me.summary_overall_rank ?? null;
+    const prevRank = (around?.rows ?? []).find((r) => r.you)?.rank ?? rank;
+
+    // Star, Flop and Killer: each starter's points gain against the average of the managers around you.
+    const avgGain = around?.rows?.length
+      ? around.rows.reduce((s, r) => s + (r.gw ?? 0), 0) / around.rows.length
+      : 0;
+    const starters = xi
+      .map((pk) => {
+        const p = byId.get(pk.element);
+        if (!p) return null;
+        const pts = (live.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1);
+        return { p, pts, gain: pts - avgGain / 2 };
+      })
+      .filter(Boolean);
+    starters.sort((a, b) => b.gain - a.gain);
+    const star = starters[0] ?? null;
+    const flop = starters.at(-1) ?? null;
+    const killer = starters.slice().sort((a, b) => a.gain - b.gain)[0] ?? null;
+
+    const changePct = rank && prevRank ? ((prevRank - rank) / prevRank) * 100 : 0;
+    const topPct = rank && snap.totalManagers ? (rank / snap.totalManagers) * 100 : null;
+
+    return {
+      liveXi,
+      benchPts,
+      total: me.summary_overall_points ?? 0,
+      rank,
+      prevRank,
+      ranksGained: prevRank && rank ? prevRank - rank : 0,
+      changePct,
+      topPct,
+      star,
+      flop,
+      killer,
+    };
+  }
+
+  const fmtNum = (n) => (n === null || n === undefined ? "–" : Number(n).toLocaleString());
+  const fmtSigned = (n, suffix = "") => `${n > 0 ? "+" : ""}${Number(n).toLocaleString()}${suffix}`;
+
+  function tile(label, value, extra = "") {
+    return `<div class="gs-tile${extra}"><div class="gs-label">${label}</div><div class="gs-val">${value}</div></div>`;
+  }
+
+  function card(kind, label, icon, pick) {
+    const img = pick
+      ? (() => {
+          const t = teamById.get(pick.p.team);
+          const gk = pick.p.element_type === 1;
+          return t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
+        })()
+      : "";
+    const name = pick ? esc(pick.p.web_name) : "–";
+    const figure = pick
+      ? kind === "killer"
+        ? `Loss: ${pick.pts.toFixed(2)} pts`
+        : `Gain: ${pick.pts >= 0 ? "+" : ""}${pick.pts.toFixed(2)} pts`
+      : "";
+    return `<div class="gs-card is-${kind}">
+      <div class="gs-cardhead"><span aria-hidden="true">${icon}</span> ${label}</div>
+      <div class="gs-shirt">${img}</div>
+      <div class="gs-name">${name}</div>
+      <div class="gs-num">${pick ? pick.pts.toFixed(0) : "–"}</div>
+      <div class="gs-fig">${figure}</div>
+    </div>`;
+  }
+
+  function renderSummary() {
+    const d = summaryData();
+    const gainsTxt = fmtSigned(d.liveXi, "");
+    const ranksTxt = fmtSigned(d.ranksGained);
+    const topTxt = d.topPct === null ? "–" : `Top ${d.topPct.toFixed(1)}%`;
+    const changeTxt = `${d.changePct >= 0 ? "+" : ""}${d.changePct.toFixed(2)}%`;
+
+    $("gs-body").innerHTML = `
+      <div class="gs-section-title"><span aria-hidden="true">🔢</span> Points gained: ${gainsTxt}</div>
+      <div class="gs-grid">
+        ${tile("GW live", fmtNum(d.liveXi))}
+        ${tile("Total", fmtNum(d.total))}
+        ${tile("Bench", fmtNum(d.benchPts))}
+        ${tile("Safety", "–")}
+        ${tile("Off top 10k", "–")}
+        ${tile("Off 3m", "–")}
+      </div>
+
+      <div class="gs-section-title"><span aria-hidden="true">🌎</span> Ranks gained: ${ranksTxt}</div>
+      <div class="gs-grid">
+        ${tile("Pre-subs", fmtNum(d.rank))}
+        ${tile("Old rank", fmtNum(d.prevRank))}
+        ${tile("Change %", changeTxt, " is-green")}
+        ${tile("Post-subs", fmtNum(d.rank))}
+        ${tile("GW rank", fmtNum(d.rank))}
+        ${tile("Rank %", topTxt)}
+      </div>
+
+      <div class="gs-cards">
+        ${card("star", "Star", "☆", d.star)}
+        ${card("flop", "Flop", "☹", d.flop)}
+        ${card("killer", "Killer", "☠", d.killer)}
+      </div>`;
+  }
+
+  // ---------- Rank Gains ----------
   function placesPerPoint(rows, myRank) {
     const list = (rows ?? []).filter((r) => r.rank && r.total !== undefined);
     if (list.length >= 2) {
@@ -105,13 +214,9 @@
     return myRank ? myRank / 1500 : 0;
   }
 
-  // Each point for a player: places gained if they score one more point, reduced by how many of the
-  // top 10k already own them, since owners gain nothing relative to each other.
   function eachPtFor(playerId, density) {
     if (!density) return 0;
-    const eo = sample?.sampled
-      ? (sample.owned[playerId] ?? 0) + (sample.captain?.[playerId] ?? 0)
-      : 0;
+    const eo = sample?.sampled ? (sample.owned[playerId] ?? 0) + (sample.captain?.[playerId] ?? 0) : 0;
     return Math.round(density * Math.max(0, 1 - Math.min(eo, 100) / 100));
   }
 
@@ -138,11 +243,7 @@
       .filter(Boolean)
       .sort((a, b) => b.gain - a.gain || a.p.web_name.localeCompare(b.p.web_name));
 
-    box.innerHTML = rows.length
-      ? rows.map(rankRow).join("")
-      : `<p class="rg-empty">No players to show.</p>`;
-
-    // Bar widths are set after rendering, because inline style attributes are blocked by the site's CSP.
+    box.innerHTML = rows.length ? rows.map(rankRow).join("") : `<p class="rg-empty">No players to show.</p>`;
     box.querySelectorAll("[data-w]").forEach((el) => {
       el.style.width = `${el.dataset.w}%`;
     });
@@ -151,10 +252,7 @@
   function rankRow(r) {
     const t = teamById.get(r.p.team);
     const gk = r.p.element_type === 1;
-    const img = t?.code
-      ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
-      : "";
-
+    const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
     const up = r.progress >= 0;
     const width = Math.min(100, Math.abs(r.progress));
     const eachText = r.each ? r.each.toLocaleString() : "–";
@@ -335,10 +433,11 @@
     $("team-meta").textContent =
       `${e.player_first_name} ${e.player_last_name} · ${e.summary_overall_points} pts · rank ${
         e.summary_overall_rank ? Number(e.summary_overall_rank).toLocaleString() : "–"
-      }`;
+      } · GW${gw}`;
 
     if (!picks) {
       $("content").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
+      $("gs-body").innerHTML = "";
     } else {
       const live = window.FPL?.live?.() ?? new Map();
       window.TEAMVIEW.render($("content"), picks, {
@@ -350,6 +449,7 @@
         rank: e.summary_overall_rank ?? null,
         back: false,
       });
+      renderSummary();
     }
 
     renderRankGains();
