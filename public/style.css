@@ -1279,3 +1279,51 @@ tr.you td { font-weight: 700; background: var(--hover); }
   cursor: default;
   color: var(--text);
 }
+
+
+
+        /* League page: the ID box is small and sits on the right, with View and the league dropdown beside it. */
+.lt-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.lt-find {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.lt-find input {
+  flex: 0 0 110px;
+  width: 110px;
+  min-height: 36px;
+  padding: 6px 8px;
+}
+.lt-find button {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+.lt-bar .lg-dd {
+  position: relative;
+  margin-top: 0;
+}
+.lt-bar #lg-btn {
+  min-height: 36px;
+  min-width: 110px;
+  max-width: 170px;
+  gap: 6px;
+}
+.lt-bar #lg-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+.lt-bar .lg-menu {
+  right: 0;
+  left: auto;
+}
