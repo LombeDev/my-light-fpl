@@ -1,4 +1,4 @@
-/* leagues-table.js: the mini-league table, expandable team views, live projections, and the league dropdown.
+/* leagues-table.js: the mini-league table, team views, live points in each row, and the league dropdown.
    Page key: league-table. Loads after app.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "league-table") return;
@@ -73,13 +73,7 @@
     return { gross: row.gross, hits: row.hits, net, low: at("low"), exp: at("exp"), high: at("high") };
   }
 
-  const positionOf = (value, others) => others.filter((o) => o > value).length + 1;
-
-  function whatIf(mine, others, total) {
-    const at = (v) => positionOf(v, others);
-    return `Position if your remaining players score low: <strong>${at(mine.low)}</strong> · expected: <strong>${at(mine.exp)}</strong> · high: <strong>${at(mine.high)}</strong> <span class="muted">of ${total}</span>`;
-  }
-
+  // Writes the live line under the points of each visible row, only during match windows.
   function applyLive(list) {
     for (const r of list) {
       const el = document.querySelector(`tr[data-row="${r.entry}"] .lt-live`);
@@ -93,56 +87,16 @@
     const { out, isLive } = await scoreAll(list.map((r) => r.entry));
     liveOn = isLive;
     liveByEntry = new Map();
-    $("live-status").textContent = isLive
-      ? "Matches are in play. Live figures refresh about once a minute."
-      : "No matches in play right now. Live points appear during match windows.";
-
     if (isLive) {
-      const board = list
+      list
         .filter((r) => out.has(r.entry))
         .map((r) => ({ entry: r.entry, ...project(out.get(r.entry), r.total - r.gw) }))
-        .sort((a, b) => b.exp - a.exp);
-      board.forEach((v) => liveByEntry.set(v.entry, v));
-
-      const mine = board.find((v) => v.entry === Number(session()?.entryId));
-      if (mine) {
-        const others = board.filter((v) => v !== mine).map((v) => v.exp);
-        $("whatif-body").innerHTML = `<p>Your projected total is <strong>${pts(mine.exp)}</strong> <span class="muted">(${pts(mine.low)} to ${pts(mine.high)})</span>.</p><p class="meta">${whatIf(mine, others, board.length)}</p>`;
-        $("whatif").hidden = false;
-      }
+        .forEach((v) => liveByEntry.set(v.entry, v));
     }
     applyLive(rows.slice(0, shown));
   }
 
-  async function showLiveRank() {
-    const s = session();
-    if (!s) return;
-    try {
-      const around = await api(`/around/${s.entryId}`);
-      const { out, isLive } = await scoreAll(around.rows.map((r) => r.entry));
-      $("live-rank").hidden = false;
-      if (!isLive) {
-        $("live-rank-body").innerHTML = `<p class="meta">No matches in play right now.</p>`;
-        return;
-      }
-      const list = around.rows
-        .filter((r) => out.has(r.entry))
-        .map((r) => ({ r, v: project(out.get(r.entry), r.total - r.gw) }))
-        .sort((a, b) => b.v.exp - a.v.exp);
-      const mine = list.find((x) => x.r.you);
-      if (!mine) {
-        $("live-rank-body").innerHTML = `<p class="meta">Your live figures are not available yet.</p>`;
-        return;
-      }
-      const others = list.filter((x) => !x.r.you).map((x) => x.v.exp);
-      $("live-rank-body").innerHTML = `<p>Projected total: <strong>${pts(mine.v.exp)}</strong> <span class="muted">(${pts(mine.v.low)} to ${pts(mine.v.high)})</span></p><p class="meta">${whatIf(mine.v, others, list.length)}</p>`;
-    } catch (err) {
-      $("live-rank").hidden = false;
-      $("live-rank-body").textContent = `Could not load your live rank. ${err.message}`;
-    }
-  }
-
-    // ---------- Table rows ----------
+  // ---------- Table rows ----------
   function rowHtml(r) {
     return `<tr data-row="${r.entry}">
       <td class="lt-name">
@@ -164,6 +118,7 @@
       <td class="lt-trs" data-c="transfers">${PENDING}</td>
     </tr>`;
   }
+
   // Only the active chip is shown. Nothing appears when no chip is active.
   function chipHtml(d) {
     return d.chip ? `<div class="lt-chips"><span class="lt-chip is-active">${esc(d.chip)}</span></div>` : "";
@@ -290,7 +245,6 @@
     $("title").textContent = name;
     $("lg-label").textContent = name;
     document.title = `${name} · FPL`;
-    $("sub").textContent = "Tap View Team to see a manager's squad for this gameweek.";
   }
 
   // ---------- League dropdown ----------
@@ -384,7 +338,6 @@
     $("more-league").addEventListener("click", showMore);
 
     showMyLeagues();
-    showLiveRank();
 
     if (!id) {
       $("meta").textContent = "Enter a classic league ID, or pick one of your leagues.";
