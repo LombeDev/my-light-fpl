@@ -78,13 +78,14 @@
 
   // ---------- Nav ----------
   const LINKS = [
+
+    { href: "/team", label: "My team", key: "team", signedIn: true },
     { href: "/games", label: "Games", key: "games" },
     { href: "/prices", label: "Prices", key: "prices" },
-    { href: "/stats", label: "Stats", key: "stats" },
     { href: "/planner", label: "Planner", key: "planner" },
     { href: "/leagues", label: "Leagues", key: "leagues" },
-    { href: "/team", label: "My team", key: "team", signedIn: true },
-    { href: "/login", label: "Log in", key: "login", signedIn: false },
+     { href: "/login", label: "Log in", key: "login", signedIn: false },
+   
   ];
 
   function renderNav() {
