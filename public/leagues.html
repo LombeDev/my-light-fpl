@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Mini-leagues · FPL</title>
-  <meta name="description" content="Fantasy Premier League mini-league tables, team views, live points and what-if scenarios.">
+  <meta name="description" content="Fantasy Premier League mini-league tables, team views and live points.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/team-view.js" defer></script>
@@ -17,11 +17,15 @@
   </header>
 
   <main>
-    <div class="lt-head">
-      <div class="lt-titles">
-        <h1 id="title" class="lt-title">Mini-leagues</h1>
-        <p id="sub" class="lt-sub">Enter a classic league ID, or pick one of your leagues.</p>
-      </div>
+    <h1 id="title" class="lt-title">Mini-leagues</h1>
+
+    <div class="lt-bar">
+      <form id="find" class="lt-find">
+        <label class="sr" for="id">League ID</label>
+        <input id="id" inputmode="numeric" placeholder="League ID" autocomplete="off">
+        <button type="submit">View</button>
+      </form>
+
       <div id="mine" class="lg-dd" hidden>
         <button id="lg-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lg-menu">
           <span id="lg-label">Leagues</span><span class="chev" aria-hidden="true">▾</span>
@@ -33,24 +37,7 @@
       </div>
     </div>
 
-    <form id="find" class="controls">
-      <label class="sr" for="id">League ID</label>
-      <input id="id" inputmode="numeric" placeholder="League ID" autocomplete="off">
-      <button type="submit">View</button>
-    </form>
-
-    <p class="meta" id="meta"></p>
-    <p class="meta" id="live-status"></p>
-
-    <section id="live-rank" hidden>
-      <h2>Your live rank</h2>
-      <div id="live-rank-body"></div>
-    </section>
-
-    <section id="whatif" hidden>
-      <h2>What if?</h2>
-      <div id="whatif-body"></div>
-    </section>
+    <p class="meta" id="meta">Enter a classic league ID, or pick one of your leagues.</p>
 
     <div class="lt-table-wrap">
       <table class="lt-table">
