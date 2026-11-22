@@ -1,13 +1,13 @@
-/* team-view.js: the team view opened from a mini-league row.
-   A field with the points and rank cards at the top, the pitch rows from goalkeeper to forward,
-   and a bench labelled by position. Exposes window.TEAMVIEW.render(el, picks, opts). */
+/* team-view.js: the squad view used inside a mini-league row and on My team.
+   opts.back shows the ‹ button that closes the view; My team leaves it off.
+   Exposes window.TEAMVIEW.render(el, picks, opts). */
 (() => {
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const DASH = "–";
 
   function render(el, picks, opts) {
-    const { snap, live = new Map(), hasLive = false, gw, gross = 0, rank = null } = opts;
+    const { snap, live = new Map(), hasLive = false, gw, gross = 0, rank = null, back = false } = opts;
     const byId = new Map(snap.players.map((p) => [p.id, p]));
     const teamById = new Map(snap.teams.map((t) => [t.id, t]));
     const posShort = new Map(snap.positions.map((p) => [p.id, p.short]));
@@ -71,12 +71,13 @@
       })
       .join("");
 
+    const head = back
+      ? `<div class="tv-head"><button type="button" class="tv-back" data-tv-back aria-label="Close team">‹</button><span>Gameweek ${gw}</span></div>`
+      : `<div class="tv-head"><span>Gameweek ${gw}</span></div>`;
+
     el.innerHTML = `
       <div class="tv">
-        <div class="tv-head">
-          <button type="button" class="tv-back" data-tv-back aria-label="Close team">‹</button>
-          <span>Gameweek ${gw}</span>
-        </div>
+        ${head}
         <div class="tv-field">
           <div class="tv-stats">
             <div class="tv-stat tv-stat-white">
