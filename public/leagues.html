@@ -22,20 +22,16 @@
         <h1 id="title" class="lt-title">Mini-leagues</h1>
         <p id="sub" class="lt-sub">Enter a classic league ID, or pick one of your leagues.</p>
       </div>
-      <div class="lt-actions">
-        <a id="act-open" class="lt-btn lt-green" href="#" target="_blank" rel="noopener" hidden aria-label="Open this league on the FPL website">↗</a>
-        <div class="lg-dd" id="mine" hidden>
-          <button id="lg-btn" class="lt-btn lt-blue" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lg-menu" aria-label="Switch league">⇅</button>
-          <div id="lg-menu" class="lg-menu" hidden>
-            <div class="lg-head">My leagues</div>
-            <ul id="mine-list"></ul>
-          </div>
+      <div id="mine" class="lg-dd" hidden>
+        <button id="lg-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lg-menu">
+          <span id="lg-label">Leagues</span><span class="chev" aria-hidden="true">▾</span>
+        </button>
+        <div id="lg-menu" class="lg-menu" hidden>
+          <div class="lg-head">My leagues</div>
+          <ul id="mine-list"></ul>
         </div>
-        <a id="act-close" class="lt-btn lt-red" href="/leagues" hidden aria-label="Close league">✕</a>
       </div>
     </div>
-
-    <div class="lt-gw"><span id="gw-label">Gameweek</span></div>
 
     <form id="find" class="controls">
       <label class="sr" for="id">League ID</label>
