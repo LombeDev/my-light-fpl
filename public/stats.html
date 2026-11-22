@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Stats · FPL</title>
-  <meta name="description" content="Fantasy Premier League player statistics for the season.">
+  <meta name="description" content="Fantasy Premier League player stats, ownership, double and blank gameweeks.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/stats.js" defer></script>
@@ -17,30 +17,43 @@
 
   <main>
     <h1>Stats</h1>
-    <p class="meta" id="meta">Loading…</p>
 
-    <div class="controls">
-      <select id="stat" aria-label="Rank by"></select>
-      <select id="pos" aria-label="Position">
-        <option value="0">All positions</option>
-      </select>
-      <select id="mins" aria-label="Minutes played"></select>
+    <div class="st-toggle">
+      <label for="photo">Player photo</label>
+      <input id="photo" type="checkbox" checked>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="n">#</th><th>Player</th><th>Team</th><th>Pos</th>
-            <th class="n" id="valh">Value</th>
-            <th class="n">Mins</th><th class="n">Goals</th><th class="n">Assists</th>
-            <th class="n">xG</th><th class="n">xA</th><th class="n">ICT</th>
-            <th class="n">CS</th><th class="n">Points</th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
+    <div class="st-tools">
+      <select id="pos" aria-label="Position">
+        <option value="0">Position</option>
+      </select>
+      <select id="team" aria-label="Team">
+        <option value="0">All teams</option>
+      </select>
+    </div>
+
+    <div class="st-tools">
+      <select id="gw-from" aria-label="From gameweek"></select>
+      <span class="st-dash" aria-hidden="true">-</span>
+      <select id="gw-to" aria-label="To gameweek"></select>
+      <select id="stat" aria-label="Sort by"></select>
+    </div>
+
+    <div class="st-tools st-actions">
+      <button id="add-col" type="button" class="st-plus" aria-label="Add the sort stat as a column">+</button>
+      <button id="preset" type="button" class="st-preset">Load Preset</button>
+    </div>
+
+    <p class="meta" id="meta">Loading…</p>
+    <p class="meta">The gameweek range uses season totals until per-gameweek points are stored.</p>
+
+    <div class="st-table-wrap">
+      <table class="st-table">
+        <thead id="st-head"></thead>
+        <tbody id="st-body"></tbody>
       </table>
     </div>
+    <p class="gw"><button id="st-more" type="button" hidden>Show more</button></p>
   </main>
 
   <footer>
