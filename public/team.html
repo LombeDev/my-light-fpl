@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>My team · FPL</title>
-  <meta name="description" content="Your Fantasy Premier League squad, popular transfers and threats to your rank.">
+  <meta name="description" content="Your Fantasy Premier League squad, rank gains, popular transfers and threats to your rank.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/team-view.js" defer></script>
@@ -22,6 +22,16 @@
     <p class="meta" id="team-note"></p>
 
     <section id="content"></section>
+
+    <section class="rg-card">
+      <div class="rg-head"><span aria-hidden="true">📈</span> Rank Gains</div>
+      <p class="rg-desc">
+        Here you can see the green arrows you get from your players and how close they are to a price rise/fall.
+        <a href="/prices">Full price predictor →</a>
+      </p>
+      <div class="rg-colhead"><span>Progress towards price rise/fall</span></div>
+      <div id="rg-body"></div>
+    </section>
 
     <section class="pt-card">
       <div class="pt-head"><span aria-hidden="true">🔥</span> Popular transfers (Top 10k)</div>
