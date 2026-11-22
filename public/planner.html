@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Planner · FPL</title>
-  <meta name="description" content="Plan a Fantasy Premier League squad, transfers and fixtures.">
+  <meta name="description" content="Fantasy Premier League season ticker and fixtures.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/planner.js" defer></script>
@@ -17,18 +17,6 @@
 
   <main>
     <h1>Planner</h1>
-    <p class="lead">
-      Build a 15-player squad within £100.0m: two goalkeepers, five defenders, five midfielders,
-      three forwards, and no more than three players from one club. Your squad is saved on this device.
-    </p>
-    <p class="meta" id="meta">Loading…</p>
-    <p id="summary"></p>
-
-    <div class="row">
-      <button id="import" type="button" hidden>Import my squad</button>
-      <button id="setbase" type="button">Use this squad as my team</button>
-      <button id="clear" type="button">Clear squad</button>
-    </div>
 
     <section>
       <div class="ticker-head">
@@ -39,21 +27,15 @@
           <strong id="gw-count">5</strong>
           <button id="gw-plus" type="button" aria-label="More gameweeks">+</button>
         </div>
-        <button id="edit-fdr" type="button">Edit FDR</button>
       </div>
 
-      <div id="fdr-editor" hidden></div>
-
-      <div class="table-wrap">
-        <table class="ticker">
+      <div class="tk-wrap">
+        <table class="tk">
           <thead id="tk-head"></thead>
           <tbody id="tk-body"></tbody>
         </table>
       </div>
-      <p class="meta">
-        Score is the total FDR across the gameweeks shown, so lower is easier. Uppercase is a home fixture,
-        lowercase is away. Mine lists your planned squad players at each club.
-      </p>
+      <p class="meta">Each cell shows the opponent and venue. Uppercase is home, lowercase is away. Colours follow FPL's difficulty rating.</p>
     </section>
 
     <section>
@@ -65,65 +47,7 @@
           <button id="fx-next" type="button" aria-label="Next gameweek">›</button>
         </div>
       </div>
-      <p class="meta">The percentage under each club is its players' effective ownership in the top-500 sample.</p>
       <div id="fx-list"></div>
-    </section>
-
-    <section>
-      <h2>Squad</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Player</th><th>Team</th><th>Pos</th><th class="n">Price</th>
-              <th class="n" data-h>FDR</th><th>Next games</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="squad"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section>
-      <h2>Transfers</h2>
-      <div class="controls">
-        <label for="ft">Free transfers</label>
-        <select id="ft" aria-label="Free transfers">
-          <option value="0">0</option>
-          <option value="1" selected>1</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-        </select>
-      </div>
-      <div id="transfers"></div>
-    </section>
-
-    <section>
-      <h2>Add players</h2>
-      <div class="controls">
-        <input id="q" type="search" placeholder="Search players" aria-label="Search players">
-        <select id="pos" aria-label="Position">
-          <option value="0">All positions</option>
-        </select>
-        <select id="sort" aria-label="Sort by">
-          <option value="points">Total points</option>
-          <option value="fdr">Easiest fixtures</option>
-          <option value="price">Price</option>
-        </select>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Player</th><th>Team</th><th>Pos</th><th class="n">Price</th>
-              <th class="n">Points</th><th class="n" data-h>FDR</th><th>Next games</th><th></th>
-            </tr>
-          </thead>
-          <tbody id="pool"></tbody>
-        </table>
-      </div>
     </section>
   </main>
 
