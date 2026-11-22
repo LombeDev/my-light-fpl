@@ -1195,3 +1195,75 @@ tr.you td { font-weight: 700; background: var(--hover); }
   .tv-bench { background: #1d3340; }
   .tv-bl { color: #cfe9f2; }
 }
+
+
+
+
+
+
+
+
+
+/* Jersey size, shared by the league rows and the team view, so they match. */
+:root { --jersey: 30px; }
+
+.lt-shirt { height: var(--jersey); width: auto; max-width: none; }
+.tv-shirt { height: var(--jersey); }
+.tv-shirt img { height: 100%; width: auto; }
+
+/* League header with the dropdown on the right, as before. */
+.lt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 16px 0 10px;
+}
+.lt-titles { min-width: 0; }
+
+.lg-dd { position: relative; margin-top: 6px; flex-shrink: 0; }
+#lg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 150px;
+  max-width: 220px;
+  min-height: 36px;
+}
+#lg-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chev { font-size: 0.8rem; color: var(--muted); }
+
+.lg-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 280px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 50;
+}
+.lg-head {
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--row);
+}
+.lg-menu ul { list-style: none; margin: 0; padding: 0; }
+.lg-menu li { border-bottom: 1px solid var(--row); }
+.lg-menu li:last-child { border-bottom: 0; }
+.lg-menu a {
+  display: block;
+  padding: 10px 14px;
+  color: var(--text);
+  text-decoration: none;
+}
+.lg-menu a:hover { background: var(--hover); }
+.lg-menu a[aria-current="true"] { font-weight: 700; background: var(--hover); }
