@@ -1,3 +1,5 @@
+/* stats.ts: the top-10k sample. Each batch reads picks and transfers for a few managers, then stores counts.
+   Batch size is 20, so each request stays under Cloudflare's subrequest limit (1 standings + 20 picks + 20 transfers). */
 import { json, type Bg, type Env, type Snapshot } from "./fpl";
 
 const FPL = "https://fantasy.premierleague.com/api";
@@ -7,10 +9,10 @@ const UA = { "User-Agent": "fpl-site/1.0", Accept: "application/json" };
 const OVERALL_LEAGUE = 314;
 const PAGE = 50;
 const TARGET = 500; // top managers sampled per gameweek
-const BATCH = 40; // picks per refresh; with the standings page, this stays under 50 requests
+const BATCH = 20;
 const EVERY_MS = 5 * 60_000; // at most one sampling batch every five minutes
-/** Pairs kept in KV. Capped to stay within the free plan's per-request CPU limit. */
-const MAX_PAIRS = 5_000;
+const MAX_PAIRS = 5_000; // squad pairs kept in KV
+const MAX_TPAIRS = 300; // transfer pairs kept in KV
 
 const CHIP_NAMES: Record<string, string> = {
   wildcard: "Wildcard",
@@ -23,6 +25,12 @@ const CHIP_NAMES: Record<string, string> = {
 interface Picks {
   active_chip: string | null;
   picks: { element: number; position: number; is_captain: boolean; is_vice_captain: boolean }[];
+}
+
+interface Transfer {
+  element_in: number;
+  element_out: number;
+  event: number;
 }
 
 interface Standing {
@@ -48,8 +56,13 @@ export interface SampleState {
   captain: Record<string, number>;
   vice: Record<string, number>;
   chips: Record<string, number>;
-  /** "a-b" with a < b, counting managers whose 15-player squad contains both. */
+  /** "a-b" with a < b, counting managers whose squad contains both. */
   pairs: Record<string, number>;
+  /** Transfers made this gameweek, counted per player. */
+  tIn: Record<string, number>;
+  tOut: Record<string, number>;
+  /** "out>in", counting managers who made that exact transfer. */
+  tPair: Record<string, number>;
   updated: string;
 }
 
@@ -88,6 +101,9 @@ function fresh(gw: number): SampleState {
     vice: {},
     chips: {},
     pairs: {},
+    tIn: {},
+    tOut: {},
+    tPair: {},
     updated: "",
   };
 }
@@ -95,6 +111,16 @@ function fresh(gw: number): SampleState {
 async function picksFor(entry: number, gw: number): Promise<Picks | null> {
   const res = await fetch(`${FPL}/entry/${entry}/event/${gw}/picks/`, { headers: UA });
   return res.ok ? ((await res.json()) as Picks) : null;
+}
+
+async function transfersFor(entry: number): Promise<Transfer[] | null> {
+  const res = await fetch(`${FPL}/entry/${entry}/transfers/`, { headers: UA });
+  return res.ok ? ((await res.json()) as Transfer[]) : null;
+}
+
+function trimTop(m: Record<string, number>, max: number): Record<string, number> {
+  if (Object.keys(m).length <= max) return m;
+  return Object.fromEntries(Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, max));
 }
 
 async function runBatch(env: Env): Promise<void> {
@@ -105,6 +131,9 @@ async function runBatch(env: Env): Promise<void> {
   let st = await env.FPL_KV.get<SampleState>("sample", "json");
   if (!st || st.gw !== gw) st = fresh(gw);
   if (!st.pairs) st.pairs = {};
+  if (!st.tIn) st.tIn = {};
+  if (!st.tOut) st.tOut = {};
+  if (!st.tPair) st.tPair = {};
 
   const maxPages = TARGET / PAGE;
   if (st.seen >= TARGET) return;
@@ -124,9 +153,13 @@ async function runBatch(env: Env): Promise<void> {
   }
 
   const batch = st.pending.splice(0, BATCH);
-  const results = await Promise.all(batch.map((id) => picksFor(id, gw).catch(() => null)));
+  const results: [Picks | null, Transfer[] | null][] = await Promise.all(
+    batch.map((id) =>
+      Promise.all([picksFor(id, gw).catch(() => null), transfersFor(id).catch(() => null)]),
+    ),
+  );
 
-  for (const p of results) {
+  for (const [p, trs] of results) {
     if (!p || !Array.isArray(p.picks)) {
       st.skipped += 1;
       continue;
@@ -148,15 +181,21 @@ async function runBatch(env: Env): Promise<void> {
     }
 
     if (p.active_chip) bump(st.chips, p.active_chip);
+
+    // Transfers made this gameweek.
+    if (Array.isArray(trs)) {
+      for (const t of trs) {
+        if (t.event !== gw) continue;
+        bump(st.tIn, t.element_in);
+        bump(st.tOut, t.element_out);
+        bump(st.tPair, `${t.element_out}>${t.element_in}`);
+      }
+    }
   }
 
-  // Keep the most common pairs only, so the stored record stays small.
-  if (Object.keys(st.pairs).length > MAX_PAIRS) {
-    const keep = Object.entries(st.pairs)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, MAX_PAIRS);
-    st.pairs = Object.fromEntries(keep);
-  }
+  // Keep the most common entries only, so the stored record stays small.
+  if (Object.keys(st.pairs).length > MAX_PAIRS) st.pairs = trimTop(st.pairs, MAX_PAIRS);
+  st.tPair = trimTop(st.tPair, MAX_TPAIRS);
 
   st.updated = new Date().toISOString();
   await env.FPL_KV.put("sample", JSON.stringify(st));
@@ -204,6 +243,16 @@ export async function sampleSummary(env: Env, bg: Bg): Promise<Response> {
         })
     : [];
 
+  const transfers = s
+    ? Object.entries(s.tPair ?? {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([key, managers]) => {
+          const [out, inn] = key.split(">").map(Number);
+          return { out, in: inn, managers, pct: pct(managers, n) };
+        })
+    : [];
+
   return new Response(
     JSON.stringify({
       gw,
@@ -216,6 +265,7 @@ export async function sampleSummary(env: Env, bg: Bg): Promise<Response> {
       vice: s ? shares(s.vice) : {},
       chips,
       pairs,
+      transfers,
     }),
     { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60" } },
   );
@@ -246,10 +296,7 @@ export async function pairsFor(id: number, env: Env, bg: Bg): Promise<Response> 
   }
   partners.sort((x, y) => y.managers - x.managers);
 
-  return new Response(
-    JSON.stringify({ player: id, owners, partners: partners.slice(0, 15) }),
-    { headers },
-  );
+  return new Response(JSON.stringify({ player: id, owners, partners: partners.slice(0, 15) }), { headers });
 }
 
 /** Five managers either side of a given manager, with DGW and BGW players in each squad. */
@@ -264,10 +311,9 @@ export async function around(id: string, env: Env): Promise<Response> {
   if (!entry.summary_overall_rank) return json({ error: "No overall rank yet." }, 404);
 
   const page = Math.ceil(entry.summary_overall_rank / PAGE);
-  const sres = await fetch(
-    `${FPL}/leagues-classic/${OVERALL_LEAGUE}/standings/?page_standings=${page}`,
-    { headers: UA },
-  );
+  const sres = await fetch(`${FPL}/leagues-classic/${OVERALL_LEAGUE}/standings/?page_standings=${page}`, {
+    headers: UA,
+  });
   if (!sres.ok) return json({ error: "Standings unavailable." }, 502);
   const list = ((await sres.json()) as StandingsPage).standings.results;
 
