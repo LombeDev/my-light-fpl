@@ -4,36 +4,38 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Mini-leagues · FPL</title>
-  <meta name="description" content="Fantasy Premier League mini-league standings, live points and what-if scenarios.">
+  <meta name="description" content="Fantasy Premier League mini-league tables, team views, live points and what-if scenarios.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
-  <script src="/leagues.js" defer></script>
+  <script src="/team-view.js" defer></script>
+  <script src="/leagues-table.js" defer></script>
 </head>
-<body data-page="leagues">
+<body data-page="league-table">
   <header class="site">
     <a class="brand" href="/">FPL</a>
     <nav id="nav" aria-label="Main"></nav>
   </header>
 
   <main>
-    <div class="lg-top">
-      <h1 id="title">Mini-leagues</h1>
-
-      <div class="lg-dd" id="mine" hidden>
-        <button id="lg-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lg-menu">
-          <span id="lg-label">Leagues</span><span class="chev" aria-hidden="true">▾</span>
-        </button>
-        <div id="lg-menu" class="lg-menu" hidden>
-          <div class="lg-head">My leagues</div>
-          <ul id="mine-list"></ul>
+    <div class="lt-head">
+      <div class="lt-titles">
+        <h1 id="title" class="lt-title">Mini-leagues</h1>
+        <p id="sub" class="lt-sub">Enter a classic league ID, or pick one of your leagues.</p>
+      </div>
+      <div class="lt-actions">
+        <a id="act-open" class="lt-btn lt-green" href="#" target="_blank" rel="noopener" hidden aria-label="Open this league on the FPL website">↗</a>
+        <div class="lg-dd" id="mine" hidden>
+          <button id="lg-btn" class="lt-btn lt-blue" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lg-menu" aria-label="Switch league">⇅</button>
+          <div id="lg-menu" class="lg-menu" hidden>
+            <div class="lg-head">My leagues</div>
+            <ul id="mine-list"></ul>
+          </div>
         </div>
+        <a id="act-close" class="lt-btn lt-red" href="/leagues" hidden aria-label="Close league">✕</a>
       </div>
     </div>
 
-    <section id="live-rank" hidden>
-      <h2>Your live rank</h2>
-      <div id="live-rank-body"></div>
-    </section>
+    <div class="lt-gw"><span id="gw-label">Gameweek</span></div>
 
     <form id="find" class="controls">
       <label class="sr" for="id">League ID</label>
@@ -41,28 +43,34 @@
       <button type="submit">View</button>
     </form>
 
-    <p class="meta" id="meta">Enter a classic league ID, or pick one of your leagues above.</p>
+    <p class="meta" id="meta"></p>
     <p class="meta" id="live-status"></p>
+
+    <section id="live-rank" hidden>
+      <h2>Your live rank</h2>
+      <div id="live-rank-body"></div>
+    </section>
 
     <section id="whatif" hidden>
       <h2>What if?</h2>
       <div id="whatif-body"></div>
     </section>
 
-    <h2>Standings</h2>
-    <div class="table-wrap">
-      <table>
+    <div class="lt-table-wrap">
+      <table class="lt-table">
         <thead>
           <tr>
-            <th class="n">Pos</th><th>Manager</th><th>Captain</th><th>Chip</th><th>Transfers</th>
-            <th class="n">GW</th><th class="n">Total</th><th class="n">Value</th>
-            <th class="n">Live GW</th><th class="n">Projected</th><th class="n">Live pos</th>
+            <th class="lt-name-h">Name</th>
+            <th class="c">Points</th>
+            <th class="c lt-sorted">Rank ▲</th>
+            <th>Transfers</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
 
+    <p class="gw"><button id="more-league" type="button" hidden>Show more</button></p>
     <p class="gw">
       <button id="prev" type="button" hidden>‹ Previous</button>
       <button id="next" type="button" hidden>Next ›</button>
