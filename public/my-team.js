@@ -1,6 +1,5 @@
-/* my-team.js: My team page. The squad in the team view, then Popular transfers (Top 10k) and
-   Main threats to your rank. Both lists come from the top-10k sample.
-   Page key: team-view. Loads after app.js and team-view.js. */
+/* my-team.js: My team page. The squad in the team view, Rank Gains, Popular transfers (Top 10k) and
+   Main threats to your rank. Page key: team-view. Loads after app.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
@@ -26,6 +25,7 @@
   let picks = null;
   let gross = 0;
   let sample = null;
+  let around = null;
   let byId = new Map();
   let teamById = new Map();
   let posById = new Map();
@@ -64,7 +64,7 @@
     document.querySelectorAll('nav a[href="/team"]').forEach((a) => a.setAttribute("aria-current", "page"));
   }
 
-  // State of each club this gameweek: finished, started (some fixtures begun), or sleep (not yet started).
+  // Club state this gameweek: finished, started (some fixtures begun), or sleep (not yet started).
   // A club with no fixture this gameweek is absent from the map.
   function clubStates() {
     const seen = new Map();
@@ -88,8 +88,130 @@
   // Price progress toward the next change, signed. Positive means rising.
   const progressOf = (p) => ((p.transfers_in - p.transfers_out) / RISE_NET) * 100;
 
-  // Players the sample owns that you don't start, sorted by points you would lose.
-  // EO Δ = your ownership (100 if in your XI, 0 otherwise) minus the sample's effective ownership.
+  // ---------- Rank Gains ----------
+
+  // How many overall places one point is worth near your rank. Taken from the managers around you:
+  // places between the highest and lowest of them, divided by the points between them.
+  // Falls back to a rough rank-based value when those managers all have the same total.
+  function placesPerPoint(rows, myRank) {
+    const list = (rows ?? []).filter((r) => r.rank && r.total !== undefined);
+    if (list.length >= 2) {
+      const ranks = list.map((r) => r.rank);
+      const totals = list.map((r) => r.total);
+      const dRank = Math.max(...ranks) - Math.min(...ranks);
+      const dPts = Math.max(...totals) - Math.min(...totals);
+      if (dRank > 0 && dPts > 0) return dRank / dPts;
+    }
+    return myRank ? myRank / 1500 : 0;
+  }
+
+  // Each point for a player: places gained if they score one more point, reduced by how many of the
+  // top 10k already own them, since owners gain nothing relative to each other.
+  function eachPtFor(playerId, density) {
+    if (!density) return 0;
+    const eo = sample?.sampled
+      ? (sample.owned[playerId] ?? 0) + (sample.captain?.[playerId] ?? 0)
+      : 0;
+    return Math.round(density * Math.max(0, 1 - Math.min(eo, 100) / 100));
+  }
+
+  function renderRankGains() {
+    const box = $("rg-body");
+    if (!picks) {
+      box.innerHTML = `<p class="rg-empty">Picks are not available yet.</p>`;
+      return;
+    }
+
+    const live = window.FPL?.live?.() ?? new Map();
+    const density = placesPerPoint(around?.rows, me?.summary_overall_rank);
+
+    const rows = picks.picks
+      .map((pk) => {
+        const p = byId.get(pk.element);
+        if (!p) return null;
+        const each = eachPtFor(p.id, density);
+        const base = live.get(p.id)?.p ?? 0;
+        const mult = pk.multiplier ?? 1;
+        const gain = Math.round(base * mult * each);
+        return { p, each, base, gain, progress: progressOf(p) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.gain - a.gain || a.p.web_name.localeCompare(b.p.web_name));
+
+    box.innerHTML = rows.length
+      ? rows.map(rankRow).join("")
+      : `<p class="rg-empty">No players to show.</p>`;
+
+    // Bar widths are set after rendering, because inline style attributes are blocked by the site's CSP.
+    box.querySelectorAll("[data-w]").forEach((el) => {
+      el.style.width = `${el.dataset.w}%`;
+    });
+  }
+
+  function rankRow(r) {
+    const t = teamById.get(r.p.team);
+    const gk = r.p.element_type === 1;
+    const img = t?.code
+      ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
+      : "";
+
+    const up = r.progress >= 0;
+    const width = Math.min(100, Math.abs(r.progress));
+    const eachText = r.each ? r.each.toLocaleString() : "–";
+
+    return `<div class="rg-row">
+      <div class="rg-shirt">${img}</div>
+      <div class="rg-main">
+        <div class="rg-name">${esc(r.p.web_name)}</div>
+        <div class="rg-each">Each pt: ${eachText} <span class="rg-dot" aria-hidden="true"></span></div>
+      </div>
+      <div class="rg-gainbox">
+        <div class="rg-pts">${r.base}</div>
+        <div class="rg-gain${r.gain > 0 ? " is-up" : ""}">↗ ${r.gain.toLocaleString()}</div>
+      </div>
+      <div class="rg-prog">
+        <div class="rg-track"><span class="${up ? "is-up" : "is-down"}" data-w="${width.toFixed(1)}"></span></div>
+        <div class="rg-plabel ${up ? "up" : "down"}">${Math.abs(r.progress).toFixed(1)}% ${up ? "↑" : "↓"}</div>
+      </div>
+    </div>`;
+  }
+
+  // ---------- Popular transfers (Top 10k) ----------
+  function chip(p) {
+    if (!p) return `<span class="pt-name">Unknown</span>`;
+    const t = teamById.get(p.team);
+    const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">` : "";
+    return `${img}<span class="pt-name">${esc(p.web_name)}</span>`;
+  }
+
+  function renderPopular() {
+    const box = $("pop-body");
+    if (!sample?.sampled) {
+      box.innerHTML = `<p class="meta pt-empty">Popular transfers appear once the top 10k sample has data.</p>`;
+      return;
+    }
+    const rows = sample.transfers ?? [];
+    if (!rows.length) {
+      box.innerHTML = `<p class="meta pt-empty">Transfers are still being collected for this gameweek.</p>`;
+      return;
+    }
+    box.innerHTML = rows
+      .map((t) => {
+        const net = t.net ?? 0;
+        const cls = net > 0 ? "is-up" : net < 0 ? "is-down" : "is-zero";
+        const sign = net > 0 ? "+" : "";
+        return `<div class="pt-row">
+          <span class="pt-pct">${t.pct.toFixed(2)}%</span>
+          <span class="pt-from">${chip(byId.get(t.out))}<span class="pt-cnt">${t.outCount ?? ""}</span></span>
+          <span class="pt-arrow" aria-hidden="true">→</span>
+          <span class="pt-to">${chip(byId.get(t.in))}<span class="pt-cnt">${t.inCount ?? ""}</span></span>
+          <span class="pt-num ${cls}">${sign}${net}</span>
+        </div>`;
+      })
+      .join("");
+  }
+
+  // ---------- Main threats to your rank ----------
   function threatRows() {
     if (!sample?.sampled) return null;
     const live = window.FPL?.live?.() ?? new Map();
@@ -138,46 +260,10 @@
     return r.status === threatFilter;
   };
 
-  // A small shirt and name for a player in the transfer list.
-  function chip(p) {
-    if (!p) return `<span class="pt-name">Unknown</span>`;
-    const t = teamById.get(p.team);
-    const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">` : "";
-    return `${img}<span class="pt-name">${esc(p.web_name)}</span>`;
-  }
-
-  function renderPopular() {
-    const box = $("pop-body");
-    if (!sample?.sampled) {
-      box.innerHTML = `<p class="meta pt-empty">Popular transfers appear once the top 10k sample has data.</p>`;
-      return;
-    }
-    const rows = sample.transfers ?? [];
-    if (!rows.length) {
-      box.innerHTML = `<p class="meta pt-empty">Transfers are still being collected for this gameweek.</p>`;
-      return;
-    }
-    box.innerHTML = rows
-      .map(
-        (t) => `<div class="pt-row">
-          <span class="pt-pct">${t.pct.toFixed(2)}%</span>
-          <span class="pt-from">${chip(byId.get(t.out))}</span>
-          <span class="pt-arrow" aria-hidden="true">→</span>
-          <span class="pt-to">${chip(byId.get(t.in))}</span>
-          <span class="pt-num">${t.managers}</span>
-        </div>`,
-      )
-      .join("");
-  }
-
-  function threatCell(r) {
-    const up = r.progress >= 0;
-    return `<span class="${up ? "up" : "down"}">${Math.abs(r.progress).toFixed(1)}% ${up ? "↑" : "↓"}</span>`;
-  }
-
   function threatLine(r) {
     const t = teamById.get(r.p.team);
     const img = t?.code ? `<img class="th-shirt" src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">` : "";
+    const up = r.progress >= 0;
     return `<tr>
       <td class="th-namecol"><div class="th-name">${img}<div>
         <div class="th-pname">${esc(r.p.web_name)}</div>
@@ -186,14 +272,14 @@
       <td class="n down">${r.delta.toFixed(1)}%</td>
       <td class="n">${r.pts === null ? "–" : r.pts}</td>
       <td class="n">${r.lost === null ? "–" : r.lost.toFixed(1)}</td>
-      <td class="n">${threatCell(r)}</td>
+      <td class="n"><span class="${up ? "up" : "down"}">${Math.abs(r.progress).toFixed(1)}% ${up ? "↑" : "↓"}</span></td>
     </tr>`;
   }
 
   function renderThreats() {
     $("th-pills").innerHTML = PILLS.map(
       ([key, label]) =>
-        `<button type="button" class="th-pill${threatFilter === key ? " is-on" : ""}" data-filter="${key}" aria-pressed="${threatFilter === key}">${label}</button>`,
+        `<button type="button" class="th-pill${threatFilter === key ? " is-on" : ""}" data-filter="${key}" aria-pressed="${threatFilter === key}"><span class="th-dot" aria-hidden="true"></span>${label}</button>`,
     ).join("");
 
     const all = threatRows();
@@ -225,17 +311,20 @@
     btn.textContent = `Show more (${Math.max(0, list.length - threatShown)} left)`;
   }
 
+  // ---------- Load and draw ----------
   async function load() {
     const auth = { headers: { Authorization: `Bearer ${session.token}` } };
-    const [meRes, picksRes, mgrRes, sampleRes] = await Promise.all([
+    const [meRes, picksRes, mgrRes, sampleRes, aroundRes] = await Promise.all([
       api("/me", auth),
       api(`/picks/${session.entryId}/${gw}`).catch(() => null),
       api(`/managers?ids=${session.entryId}`).catch(() => null),
       api("/sample").catch(() => null),
+      api(`/around/${session.entryId}`).catch(() => null),
     ]);
     me = meRes.entry;
     picks = picksRes;
     sample = sampleRes;
+    around = aroundRes;
     gross = mgrRes?.managers?.[0]?.gross ?? picksRes?.entry_history?.points ?? 0;
     draw();
   }
@@ -263,6 +352,7 @@
       });
     }
 
+    renderRankGains();
     renderPopular();
     renderThreats();
   }
