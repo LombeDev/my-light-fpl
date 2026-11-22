@@ -1,32 +1,52 @@
-/* stats.js: leaderboards (25 at a time), double and blank gameweeks, sample ownership, chips, captains,
-   ownership combinations (top 10), managers around you. Starts on fpl:ready from app.js. */
+/* stats.js: the Stats page. A filter bar, a sortable player table with extra columns and presets,
+   then double and blank gameweeks, sample ownership, ownership combinations and managers around you.
+   Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "stats") return;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const pct = (v) => `${Number(v ?? 0).toFixed(1)}%`;
+  const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const SESSION = "fpl.session";
   const PAGE = 25;
   const TOP = 10;
+  const MAX_EXTRA = 4;
 
-  // [field, label, formatter]
+  // Points per match, estimated from minutes at about 90 per match.
+  // The snapshot does not store matches played, so this is an estimate.
+  const ppmOf = (p) => (p.minutes ? p.total_points / Math.max(1, Math.round(p.minutes / 90)) : 0);
+
   const STATS = [
-    ["total_points", "Total points", (v) => v],
-    ["goals", "Goals", (v) => v],
-    ["assists", "Assists", (v) => v],
-    ["expected_goals", "Expected goals", (v) => v.toFixed(2)],
-    ["expected_assists", "Expected assists", (v) => v.toFixed(2)],
-    ["ict", "ICT index", (v) => v.toFixed(1)],
-    ["clean_sheets", "Clean sheets", (v) => v],
-    ["bonus", "Bonus points", (v) => v],
-    ["points_per_million", "Points per £m", (v) => v.toFixed(2)],
-    ["form", "Form", (v) => v.toFixed(1)],
+    { key: "form", label: "Form", get: (p) => p.form, fmt: (v) => v.toFixed(1) },
+    { key: "total", label: "Points", get: (p) => p.total_points, fmt: (v) => v },
+    { key: "ppm", label: "Points per match", get: ppmOf, fmt: (v) => v.toFixed(1) },
+    { key: "money", label: "Points per £m", get: (p) => p.points_per_million, fmt: (v) => v.toFixed(2) },
+    { key: "cost", label: "Cost", get: (p) => p.now_cost, fmt: (v) => `£${(v / 10).toFixed(1)}m` },
+    { key: "owned", label: "TSB %", get: (p) => p.selected_by_percent, fmt: (v) => `${v.toFixed(1)}%` },
+    { key: "goals", label: "Goals", get: (p) => p.goals, fmt: (v) => v },
+    { key: "assists", label: "Assists", get: (p) => p.assists, fmt: (v) => v },
+    { key: "xg", label: "xG", get: (p) => p.expected_goals, fmt: (v) => v.toFixed(2) },
+    { key: "xa", label: "xA", get: (p) => p.expected_assists, fmt: (v) => v.toFixed(2) },
+    { key: "ict", label: "ICT", get: (p) => p.ict, fmt: (v) => v.toFixed(1) },
+    { key: "cs", label: "Clean sheets", get: (p) => p.clean_sheets, fmt: (v) => v },
+    { key: "bonus", label: "Bonus", get: (p) => p.bonus, fmt: (v) => v },
+    { key: "tin", label: "Transfers in", get: (p) => p.transfers_in, fmt: (v) => v.toLocaleString() },
+    { key: "mins", label: "Minutes", get: (p) => p.minutes, fmt: (v) => v.toLocaleString() },
   ];
 
-  const MINUTES = [
-    [0, "Any minutes"],
-    [450, "450+ minutes"],
-    [900, "900+ minutes"],
+  const statOf = (key) => STATS.find((s) => s.key === key);
+
+  // Columns always shown, in order. Extra columns are added after these.
+  const FIXED = ["cost", "owned", "total", "ppm", "form"];
+  const HEAD = { cost: "Cost", owned: "TSB %", total: "Pts", ppm: "Pts/match", form: "Form" };
+  const labelOf = (key) => HEAD[key] ?? statOf(key).label;
+  const cellOf = (key, p) => (key === "ppm" && !p.minutes ? "–" : statOf(key).fmt(statOf(key).get(p)));
+
+  const PRESETS = [
+    { name: "Form", stat: "form", extras: [] },
+    { name: "Value", stat: "money", extras: ["goals", "assists"] },
+    { name: "Attack", stat: "xg", extras: ["goals", "assists", "xa"] },
+    { name: "Defence", stat: "cs", extras: ["bonus", "ict"] },
   ];
 
   document.addEventListener("fpl:ready", (e) => {
@@ -40,7 +60,7 @@
     return data;
   }
 
-  // Adds a titled section to the page and returns its note and body elements.
+  // Adds a titled section below the table and returns its note and body elements.
   function section(title) {
     const sec = document.createElement("section");
     sec.innerHTML = `<h2>${esc(title)}</h2><p class="meta note"></p><div class="body"></div>`;
@@ -54,85 +74,159 @@
     <tbody>${rows || `<tr><td colspan="${head.length}">No data yet.</td></tr>`}</tbody>
   </table></div>`;
 
-  // "Show more" button under a table. Created once, then kept in sync.
-  function moreBtn(id, tbody, total, limit, onClick) {
-    let btn = document.getElementById(id);
-    if (!btn) {
-      const p = document.createElement("p");
-      btn = document.createElement("button");
-      btn.id = id;
-      btn.type = "button";
-      p.append(btn);
-      tbody.closest(".table-wrap").after(p);
-      btn.addEventListener("click", onClick);
-    }
-    const left = total - limit;
-    btn.hidden = left <= 0;
-    btn.textContent = `Show more (${Math.max(0, left)} left)`;
-  }
-
   function init(snap) {
     const F = window.FPL;
+    const max = snap.events.length || 38;
+    const state = { pos: 0, team: 0, stat: "form", extras: [], photo: true, limit: PAGE };
     const positions = new Map(snap.positions.map((p) => [p.id, p.short]));
-    const statSel = $("stat");
-    const posSel = $("pos");
-    const minSel = $("mins");
-    let limit = PAGE;
+    const teamById = new Map(snap.teams.map((t) => [t.id, t]));
 
-    STATS.forEach(([field, label]) => statSel.append(new Option(label, field)));
-    snap.positions.forEach((p) => posSel.append(new Option(p.short, String(p.id))));
-    MINUTES.forEach(([value, label]) => minSel.append(new Option(label, String(value))));
+    // Filter options
+    snap.positions.forEach((p) => $("pos").append(new Option(p.short, String(p.id))));
+    [...snap.teams]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach((t) => $("team").append(new Option(t.name, String(t.id))));
+    for (let g = 1; g <= max; g++) {
+      $("gw-from").append(new Option(`GW${g}`, String(g)));
+      $("gw-to").append(new Option(`GW${g}`, String(g)));
+    }
+    $("gw-from").value = "1";
+    $("gw-to").value = String(F.gw);
+    STATS.forEach((s) => $("stat").append(new Option(s.label, s.key)));
+    $("stat").value = state.stat;
 
-    function render() {
-      const [field, label, fmt] = STATS.find((s) => s[0] === statSel.value) ?? STATS[0];
-      const posId = Number(posSel.value);
-      const min = Number(minSel.value);
-      $("valh").textContent = label;
-
-      const all = snap.players
-        .filter((p) => (!posId || p.element_type === posId) && p.minutes >= min)
-        .sort((a, b) => b[field] - a[field]);
-      const list = all.slice(0, limit);
-
-      $("rows").innerHTML = list.length
-        ? list
-            .map(
-              (p, i) => `<tr>
-                <td class="n">${i + 1}</td>
-                <td>${F.playerHtml(p.id)}</td>
-                <td>${F.teamHtml(p.team)}</td>
-                <td>${esc(positions.get(p.element_type))}</td>
-                <td class="n"><strong>${fmt(p[field])}</strong></td>
-                <td class="n">${p.minutes.toLocaleString()}</td>
-                <td class="n">${p.goals}</td>
-                <td class="n">${p.assists}</td>
-                <td class="n">${p.expected_goals.toFixed(2)}</td>
-                <td class="n">${p.expected_assists.toFixed(2)}</td>
-                <td class="n">${p.ict.toFixed(1)}</td>
-                <td class="n">${p.clean_sheets}</td>
-                <td class="n">${p.total_points}</td>
-              </tr>`,
-            )
-            .join("")
-        : `<tr><td colspan="13">No players match.</td></tr>`;
-
-      moreBtn("more-board", $("rows"), all.length, limit, () => {
-        limit += PAGE;
-        render();
-      });
-
-      $("meta").textContent = `Top ${all.length} · showing ${list.length} · season to date · updated ${new Date(snap.generatedAt).toLocaleString()}`;
+    // Players after the position and team filters, sorted by the chosen stat.
+    function sorted() {
+      const s = statOf(state.stat);
+      return snap.players
+        .filter((p) => (!state.pos || p.element_type === state.pos) && (!state.team || p.team === state.team))
+        .sort((a, b) => s.get(b) - s.get(a));
     }
 
-    const reset = () => {
-      limit = PAGE;
-      render();
-    };
-    statSel.addEventListener("change", reset);
-    posSel.addEventListener("change", reset);
-    minSel.addEventListener("change", reset);
+    function renderHead() {
+      const fixed = FIXED.map(
+        (key) =>
+          `<th class="${key === state.stat ? "is-sort" : ""}" data-key="${key}">${esc(labelOf(key))}</th>`,
+      ).join("");
+      const extra = state.extras
+        .map(
+          (key) =>
+            `<th class="${key === state.stat ? "is-sort" : ""}" data-key="${key}">${esc(labelOf(key))}<button type="button" class="st-x" data-remove="${key}" aria-label="Remove ${esc(labelOf(key))} column">×</button></th>`,
+        )
+        .join("");
+      $("st-head").innerHTML = `<tr><th class="st-namecol">Name</th>${fixed}${extra}</tr>`;
+    }
 
-    render();
+    function renderBody() {
+      const all = sorted();
+      const list = all.slice(0, state.limit);
+      const cols = [...FIXED, ...state.extras];
+
+      $("st-body").innerHTML = list.length
+        ? list
+            .map((p) => {
+              const t = teamById.get(p.team);
+              const shirt =
+                state.photo && t?.code
+                  ? `<img class="st-shirt" src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">`
+                  : "";
+              const name = `<td class="st-namecol"><div class="st-name">${shirt}<div>
+                  <div class="st-pname">${esc(p.web_name)}</div>
+                  <div class="st-sub">${esc(t?.short ?? "")} · ${esc(positions.get(p.element_type) ?? "")}</div>
+                </div></div></td>`;
+              const cells = cols
+                .map((key) => `<td class="n${key === state.stat ? " is-sort" : ""}">${cellOf(key, p)}</td>`)
+                .join("");
+              return `<tr>${name}${cells}</tr>`;
+            })
+            .join("")
+        : `<tr><td colspan="${cols.length + 1}">No players match.</td></tr>`;
+
+      const btn = $("st-more");
+      btn.hidden = all.length <= state.limit;
+      btn.textContent = `Show more (${Math.max(0, all.length - state.limit)} left)`;
+      $("meta").textContent = `${all.length} players · sorted by ${statOf(state.stat).label} · season to date`;
+    }
+
+    function rerender() {
+      renderHead();
+      renderBody();
+    }
+
+    // Header clicks: sort by that column, or remove an extra column.
+    $("st-head").addEventListener("click", (e) => {
+      const rm = e.target.closest("[data-remove]");
+      if (rm) {
+        state.extras = state.extras.filter((k) => k !== rm.dataset.remove);
+        rerender();
+        return;
+      }
+      const th = e.target.closest("th[data-key]");
+      if (th) {
+        state.stat = th.dataset.key;
+        state.limit = PAGE;
+        $("stat").value = state.stat;
+        rerender();
+      }
+    });
+
+    $("photo").addEventListener("change", (e) => {
+      state.photo = e.target.checked;
+      renderBody();
+    });
+    $("pos").addEventListener("change", (e) => {
+      state.pos = Number(e.target.value);
+      state.limit = PAGE;
+      renderBody();
+    });
+    $("team").addEventListener("change", (e) => {
+      state.team = Number(e.target.value);
+      state.limit = PAGE;
+      renderBody();
+    });
+    $("stat").addEventListener("change", (e) => {
+      state.stat = e.target.value;
+      state.limit = PAGE;
+      rerender();
+    });
+    $("add-col").addEventListener("click", () => {
+      const key = state.stat;
+      if (FIXED.includes(key) || state.extras.includes(key)) {
+        $("meta").textContent = "That column is already shown.";
+        return;
+      }
+      if (state.extras.length >= MAX_EXTRA) {
+        $("meta").textContent = `You can add up to ${MAX_EXTRA} extra columns.`;
+        return;
+      }
+      state.extras.push(key);
+      rerender();
+    });
+
+    let presetIndex = -1;
+    $("preset").addEventListener("click", () => {
+      presetIndex = (presetIndex + 1) % PRESETS.length;
+      const pr = PRESETS[presetIndex];
+      state.stat = pr.stat;
+      state.extras = [...pr.extras];
+      state.pos = 0;
+      state.team = 0;
+      state.limit = PAGE;
+      $("pos").value = "0";
+      $("team").value = "0";
+      $("stat").value = state.stat;
+      rerender();
+      $("meta").textContent = `Loaded the ${pr.name} preset.`;
+    });
+
+    $("st-more").addEventListener("click", () => {
+      state.limit += PAGE;
+      renderBody();
+    });
+
+    rerender();
+
+    // Lower sections, unchanged from before
     renderFixtureLoad(snap);
     renderSample(snap);
     renderCombos(snap);
@@ -471,7 +565,8 @@
       return;
     }
 
-    note.textContent = "Five places either side of your overall rank. DGW and BGW show squad players in double or blank teams this gameweek.";
+    note.textContent =
+      "Five places either side of your overall rank. DGW and BGW show squad players in double or blank teams this gameweek.";
 
     try {
       const d = await api(`/around/${session.entryId}`);
