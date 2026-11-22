@@ -1,4 +1,5 @@
-/* my-team.js: My team page. Squad in the team view, deadline countdown, and transfers in and out.
+/* my-team.js: My team page. The squad in the team view, then Popular transfers (Top 10k) and
+   Main threats to your rank. Both lists come from the top-10k sample.
    Page key: team-view. Loads after app.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
@@ -6,7 +7,17 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
-  const PAGE = 25;
+  const RISE_NET = 220000; // net transfers for a price move to reach 100%
+  const PAGE = 10;
+
+  const PILLS = [
+    ["all", "All"],
+    ["played", "Played"],
+    ["playing", "Playing"],
+    ["toplay", "To Play"],
+    ["didnt", "Didn't Play"],
+    ["bench", "In Your Bench"],
+  ];
 
   let snap = null;
   let gw = 1;
@@ -14,10 +25,12 @@
   let me = null;
   let picks = null;
   let gross = 0;
-  let deadlineMs = null;
-  let trRows = []; // transfers data for the gameweek, all players
-  let trShown = PAGE;
-  let trQuery = "";
+  let sample = null;
+  let byId = new Map();
+  let teamById = new Map();
+  let posById = new Map();
+  let threatFilter = "all";
+  let threatShown = PAGE;
 
   const readyP = new Promise((resolve) =>
     document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
@@ -51,140 +64,178 @@
     document.querySelectorAll('nav a[href="/team"]').forEach((a) => a.setAttribute("aria-current", "page"));
   }
 
-  // ---------- Deadline countdown ----------
-  function setupDeadline(snapshot) {
-    // The deadline is the next gameweek that has not finished, from FPL's events data.
-    const next = snapshot.events.find((e) => e.current && !e.finished) ?? snapshot.events.find((e) => e.next);
-    const iso = next?.deadline ?? null;
-    deadlineMs = iso ? Date.parse(iso) : null;
+  // State of each club this gameweek: finished, started (some fixtures begun), or sleep (not yet started).
+  // A club with no fixture this gameweek is absent from the map.
+  function clubStates() {
+    const seen = new Map();
+    for (const f of snap.fixtures) {
+      if (f.gw !== gw) continue;
+      for (const t of [f.home, f.away]) {
+        const list = seen.get(t) ?? [];
+        list.push(f.finished ? "finished" : f.started ? "started" : "sleep");
+        seen.set(t, list);
+      }
+    }
+    const out = new Map();
+    for (const [t, list] of seen) {
+      if (list.every((s) => s === "finished")) out.set(t, "finished");
+      else if (list.some((s) => s !== "sleep")) out.set(t, "started");
+      else out.set(t, "sleep");
+    }
+    return out;
+  }
 
-    if (deadlineMs) {
-      $("dl-date").textContent = new Date(deadlineMs).toLocaleString(undefined, {
-        weekday: "short",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
+  // Price progress toward the next change, signed. Positive means rising.
+  const progressOf = (p) => ((p.transfers_in - p.transfers_out) / RISE_NET) * 100;
+
+  // Players the sample owns that you don't start, sorted by points you would lose.
+  // EO Δ = your ownership (100 if in your XI, 0 otherwise) minus the sample's effective ownership.
+  function threatRows() {
+    if (!sample?.sampled) return null;
+    const live = window.FPL?.live?.() ?? new Map();
+    const states = clubStates();
+    const xi = new Set(picks.picks.filter((x) => x.position <= 11).map((x) => x.element));
+    const bench = new Set(picks.picks.filter((x) => x.position > 11).map((x) => x.element));
+
+    const rows = [];
+    for (const key of Object.keys(sample.owned)) {
+      const id = Number(key);
+      const p = byId.get(id);
+      if (!p) continue;
+
+      const eo = (sample.owned[key] ?? 0) + (sample.captain?.[key] ?? 0);
+      const delta = (xi.has(id) ? 100 : 0) - eo;
+      if (delta >= 0) continue;
+
+      const d = live.get(id);
+      const st = states.get(p.team);
+      let status;
+      if (st === undefined) status = "didnt";
+      else if (st === "finished") status = d && d.m === 0 ? "didnt" : "played";
+      else if (st === "started") status = "playing";
+      else status = "toplay";
+
+      const pts = d ? d.p : null;
+      rows.push({
+        p,
+        eo,
+        delta,
+        pts,
+        lost: pts === null ? null : (eo / 100) * pts,
+        status,
+        bench: bench.has(id),
+        progress: progressOf(p),
       });
-    } else {
-      $("dl-date").textContent = "Deadline not available";
     }
 
-    const pad = (n) => String(n).padStart(2, "0");
-    const tick = () => {
-      if (!deadlineMs) return;
-      const ms = deadlineMs - Date.now();
-      if (ms <= 0) {
-        ["dl-d", "dl-h", "dl-m", "dl-s"].forEach((id) => ($(id).textContent = "00"));
-        $("dl-date").textContent = "Deadline passed";
-        return;
-      }
-      const d = Math.floor(ms / 86400000);
-      const h = Math.floor((ms % 86400000) / 3600000);
-      const m = Math.floor((ms % 3600000) / 60000);
-      const s = Math.floor((ms % 60000) / 1000);
-      $("dl-d").textContent = pad(d);
-      $("dl-h").textContent = pad(h);
-      $("dl-m").textContent = pad(m);
-      $("dl-s").textContent = pad(s);
-    };
-    tick();
-    setInterval(tick, 1000);
+    rows.sort((a, b) => (b.lost ?? -1) - (a.lost ?? -1) || a.delta - b.delta);
+    return rows;
   }
 
-  // ---------- Transfers in and out ----------
-  // Uses this gameweek's transfer counts from the snapshot, for every player.
-  function trFilter() {
-    const needle = trQuery.trim().toLowerCase();
-    return trRows.filter((r) => !needle || r.name.toLowerCase().includes(needle));
+  const matchesFilter = (r) => {
+    if (threatFilter === "all") return true;
+    if (threatFilter === "bench") return r.bench;
+    return r.status === threatFilter;
+  };
+
+  // A small shirt and name for a player in the transfer list.
+  function chip(p) {
+    if (!p) return `<span class="pt-name">Unknown</span>`;
+    const t = teamById.get(p.team);
+    const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">` : "";
+    return `${img}<span class="pt-name">${esc(p.web_name)}</span>`;
   }
 
-  function renderTransfers() {
-    const all = trFilter();
-    const list = all.slice(0, trShown);
+  function renderPopular() {
+    const box = $("pop-body");
+    if (!sample?.sampled) {
+      box.innerHTML = `<p class="meta pt-empty">Popular transfers appear once the top 10k sample has data.</p>`;
+      return;
+    }
+    const rows = sample.transfers ?? [];
+    if (!rows.length) {
+      box.innerHTML = `<p class="meta pt-empty">Transfers are still being collected for this gameweek.</p>`;
+      return;
+    }
+    box.innerHTML = rows
+      .map(
+        (t) => `<div class="pt-row">
+          <span class="pt-pct">${t.pct.toFixed(2)}%</span>
+          <span class="pt-from">${chip(byId.get(t.out))}</span>
+          <span class="pt-arrow" aria-hidden="true">→</span>
+          <span class="pt-to">${chip(byId.get(t.in))}</span>
+          <span class="pt-num">${t.managers}</span>
+        </div>`,
+      )
+      .join("");
+  }
 
-    $("tr-head").innerHTML = `<tr>
-      <th class="tr-namecol">Name</th>
-      <th class="n">Cost</th>
-      <th class="n">TSB %</th>
-      <th class="n">Pts</th>
-      <th class="n is-sort">Transfers in</th>
-      <th class="n">Transfers out</th>
+  function threatCell(r) {
+    const up = r.progress >= 0;
+    return `<span class="${up ? "up" : "down"}">${Math.abs(r.progress).toFixed(1)}% ${up ? "↑" : "↓"}</span>`;
+  }
+
+  function threatLine(r) {
+    const t = teamById.get(r.p.team);
+    const img = t?.code ? `<img class="th-shirt" src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">` : "";
+    return `<tr>
+      <td class="th-namecol"><div class="th-name">${img}<div>
+        <div class="th-pname">${esc(r.p.web_name)}</div>
+        <div class="th-sub">${esc(t?.short ?? "")} • ${esc(posById.get(r.p.element_type) ?? "")}</div>
+      </div></div></td>
+      <td class="n down">${r.delta.toFixed(1)}%</td>
+      <td class="n">${r.pts === null ? "–" : r.pts}</td>
+      <td class="n">${r.lost === null ? "–" : r.lost.toFixed(1)}</td>
+      <td class="n">${threatCell(r)}</td>
+    </tr>`;
+  }
+
+  function renderThreats() {
+    $("th-pills").innerHTML = PILLS.map(
+      ([key, label]) =>
+        `<button type="button" class="th-pill${threatFilter === key ? " is-on" : ""}" data-filter="${key}" aria-pressed="${threatFilter === key}">${label}</button>`,
+    ).join("");
+
+    const all = threatRows();
+    if (all === null) {
+      $("th-note").textContent = "Threats appear once the top 10k sample has data.";
+      $("th-head").innerHTML = "";
+      $("th-body").innerHTML = "";
+      $("th-more").hidden = true;
+      return;
+    }
+
+    $("th-note").textContent = "";
+    $("th-head").innerHTML = `<tr>
+      <th class="th-namecol">Player</th>
+      <th class="n">EO Δ</th>
+      <th class="n">Score</th>
+      <th class="n">Pts Lost</th>
+      <th class="n">Progress towards price rise/fall</th>
     </tr>`;
 
-    $("tr-body").innerHTML = list.length
-      ? list
-          .map((r) => {
-            const shirt = r.shirt
-              ? `<img class="tr-shirt" src="${esc(r.shirt)}" alt="" loading="lazy">`
-              : `<span class="tr-shirt tr-shirt-empty"></span>`;
-            return `<tr>
-              <td class="tr-namecol"><div class="tr-name">${shirt}<div>
-                <div class="tr-pname">${esc(r.name)}</div>
-                <div class="tr-sub">${esc(r.club)} • ${esc(r.pos)}${r.yellow ? ` <span class="tr-card"></span>` : ""}</div>
-              </div></div></td>
-              <td class="n">${r.cost}</td>
-              <td class="n">${r.owned}</td>
-              <td class="n">${r.pts}</td>
-              <td class="n is-sort">${r.tin.toLocaleString()}</td>
-              <td class="n">${r.tout.toLocaleString()}</td>
-            </tr>`;
-          })
-          .join("")
-      : `<tr><td colspan="6">No players match.</td></tr>`;
+    const list = all.filter(matchesFilter);
+    const shown = list.slice(0, threatShown);
+    $("th-body").innerHTML = shown.length
+      ? shown.map(threatLine).join("")
+      : `<tr><td colspan="5">No players match.</td></tr>`;
 
-    const btn = $("tr-more");
-    btn.hidden = all.length <= trShown;
-    btn.textContent = `Show more (${Math.max(0, all.length - trShown)} left)`;
+    const btn = $("th-more");
+    btn.hidden = list.length <= threatShown;
+    btn.textContent = `Show more (${Math.max(0, list.length - threatShown)} left)`;
   }
 
-  function setupTransfers(snapshot) {
-    const teamById = new Map(snapshot.teams.map((t) => [t.id, t]));
-    const posById = new Map(snapshot.positions.map((p) => [p.id, p.short]));
-
-    // Transfers in and out for the gameweek, sorted by transfers in by default.
-    trRows = snapshot.players
-      .map((p) => {
-        const t = teamById.get(p.team);
-        return {
-          name: p.web_name,
-          club: t?.short ?? "",
-          pos: posById.get(p.element_type) ?? "",
-          shirt: t?.code ? `${SHIRTS}/shirt_${t.code}-66.png` : "",
-          cost: `£${(p.now_cost / 10).toFixed(1)}m`,
-          owned: `${Number(p.selected_by_percent).toFixed(1)}%`,
-          pts: p.total_points,
-          tin: p.transfers_in ?? 0,
-          tout: p.transfers_out ?? 0,
-          yellow: false,
-        };
-      })
-      .sort((a, b) => b.tin - a.tin);
-
-    $("tr-q").addEventListener("input", (e) => {
-      trQuery = e.target.value;
-      trShown = PAGE;
-      renderTransfers();
-    });
-    $("tr-more").addEventListener("click", () => {
-      trShown += PAGE;
-      renderTransfers();
-    });
-
-    renderTransfers();
-  }
-
-  // ---------- Squad ----------
   async function load() {
     const auth = { headers: { Authorization: `Bearer ${session.token}` } };
-    const [meRes, picksRes, mgrRes] = await Promise.all([
+    const [meRes, picksRes, mgrRes, sampleRes] = await Promise.all([
       api("/me", auth),
       api(`/picks/${session.entryId}/${gw}`).catch(() => null),
       api(`/managers?ids=${session.entryId}`).catch(() => null),
+      api("/sample").catch(() => null),
     ]);
     me = meRes.entry;
     picks = picksRes;
+    sample = sampleRes;
     gross = mgrRes?.managers?.[0]?.gross ?? picksRes?.entry_history?.points ?? 0;
     draw();
   }
@@ -198,22 +249,22 @@
       }`;
 
     if (!picks) {
-      $("team-note").textContent = "";
       $("content").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
-      return;
+    } else {
+      const live = window.FPL?.live?.() ?? new Map();
+      window.TEAMVIEW.render($("content"), picks, {
+        snap,
+        live,
+        hasLive: live.size > 0,
+        gw,
+        gross,
+        rank: e.summary_overall_rank ?? null,
+        back: false,
+      });
     }
 
-    $("team-note").textContent = "";
-    const live = window.FPL?.live?.() ?? new Map();
-    window.TEAMVIEW.render($("content"), picks, {
-      snap,
-      live,
-      hasLive: live.size > 0,
-      gw,
-      gross,
-      rank: e.summary_overall_rank ?? null,
-      back: false,
-    });
+    renderPopular();
+    renderThreats();
   }
 
   async function init() {
@@ -221,8 +272,17 @@
     session = readSession();
     if (!session) return location.assign("/login");
 
-    setupDeadline(snap);
-    setupTransfers(snap);
+    $("th-pills").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-filter]");
+      if (!b) return;
+      threatFilter = b.dataset.filter;
+      threatShown = PAGE;
+      renderThreats();
+    });
+    $("th-more").addEventListener("click", () => {
+      threatShown += PAGE;
+      renderThreats();
+    });
 
     try {
       await load();
@@ -242,6 +302,9 @@
       return;
     }
     gw = (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
+    byId = new Map(snap.players.map((p) => [p.id, p]));
+    teamById = new Map(snap.teams.map((t) => [t.id, t]));
+    posById = new Map(snap.positions.map((p) => [p.id, p.short]));
     init();
   });
 })();
