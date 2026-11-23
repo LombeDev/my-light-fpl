@@ -2068,3 +2068,23 @@ tr.you td { font-weight: 700; background: var(--hover); }
   color: #1f9d55;
 }
 .gs-cards > .gs-card.is-killer .gs-fig { color: #d64545; }
+
+
+
+
+/* Login: sign-up code step. Uses the same look as the rest of the login page. */
+.au-otp {
+  text-align: center;
+  letter-spacing: 0.4em;
+  font-size: 22px;
+  font-weight: 500;
+}
+.au-hint {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #3c3c3c;
+  text-align: left;
+}
+#signup-view .au-link-step { text-align: left; }
+#signup-2 .au-secondary { width: 100%; }
