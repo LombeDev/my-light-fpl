@@ -1,5 +1,5 @@
 import { ensureLive, ensureSnapshot, ensureState, getEntry, json, type Bg, type Env, type Meta } from "../../lib/fpl";
-import { challenge, login, me, myLeagues } from "../../lib/auth";
+import { login, me, myLeagues } from "../../lib/auth";
 import { league } from "../../lib/leagues";
 import { livescore } from "../../lib/live";
 import { managers } from "../../lib/managers";
@@ -74,8 +74,7 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
     }
 
     if (request.method === "POST") {
-      if (path === "auth/challenge") return await challenge(request, env);
-      if (path === "auth/verify") return await login(request, env);
+      if (path === "auth/login") return await login(request, env);
     }
 
     return json({ error: "Not found." }, 404);
