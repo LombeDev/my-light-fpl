@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>My team · FPL</title>
-  <meta name="description" content="Your Fantasy Premier League squad, gameweek summary, rank gains, popular transfers and threats to your rank.">
+  <meta name="description" content="Your Fantasy Premier League squad in pitch and list view, deadline, transfers and gameweek summary.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/team-view.js" defer></script>
@@ -16,44 +16,85 @@
     <nav id="nav" aria-label="Main"></nav>
   </header>
 
-  <main>
-    <section class="gw-top">
-      <h1 id="team-name">My team</h1>
-      <p class="meta" id="team-meta"></p>
-      <p class="meta" id="team-note"></p>
-    </section>
+  <main class="mt">
+    <div class="mt-layout">
+      <div class="mt-main">
+        <div class="mt-banner">
+          <button id="gw-prev" class="mt-gwbtn" type="button" aria-label="Previous gameweek">‹</button>
+          <span id="gw-title">Gameweek</span>
+          <button id="gw-next" class="mt-gwbtn" type="button" aria-label="Next gameweek">›</button>
+        </div>
 
-    <section class="gs-card" id="gs-body" aria-label="Gameweek summary"></section>
+        <div class="mt-deadline">
+          <div class="mt-dl-label" id="dl-label">Deadline</div>
+          <div class="mt-dl-units">
+            <div class="mt-dl-unit"><span id="dl-d">--</span><small>Days</small></div>
+            <div class="mt-dl-unit"><span id="dl-h">--</span><small>Hrs</small></div>
+            <div class="mt-dl-unit"><span id="dl-m">--</span><small>Min</small></div>
+            <div class="mt-dl-unit"><span id="dl-s">--</span><small>Sec</small></div>
+          </div>
+        </div>
 
-    <section id="content"></section>
+        <div class="mt-tiles">
+          <div class="mt-tile"><div class="mt-tl">Transfers</div><div class="mt-tv" id="tile-tr">–</div></div>
+          <div class="mt-tile"><div class="mt-tl">Cost</div><div class="mt-tv" id="tile-cost">–</div></div>
+          <div class="mt-tile"><div class="mt-tl">Bank</div><div class="mt-tv is-green" id="tile-bank">–</div></div>
+          <div class="mt-tile"><div class="mt-tl">xPts</div><div class="mt-tv" id="tile-xpts">–</div></div>
+        </div>
 
-    <section class="rg-card">
-      <div class="rg-head"><span aria-hidden="true">📈</span> Rank Gains</div>
-      <p class="rg-desc">
-        Here you can see the green arrows you get from your players and how close they are to a price rise/fall.
-        <a href="/prices">Full price predictor →</a>
-      </p>
-      <div class="rg-colhead"><span>Progress towards price rise/fall</span></div>
-      <div id="rg-body"></div>
-    </section>
+        <div class="mt-toolbar">
+          <div class="mt-switch" role="group" aria-label="View">
+            <button type="button" id="view-pitch" class="is-on" aria-pressed="true">Pitch</button>
+            <button type="button" id="view-list" aria-pressed="false">List</button>
+          </div>
+        </div>
 
-    <section class="pt-card">
-      <div class="pt-head"><span aria-hidden="true">🔥</span> Popular transfers (Top 10k)</div>
-      <div id="pop-body"></div>
-    </section>
+        <div id="mt-view"></div>
 
-    <section class="th-card">
-      <div class="th-head"><span aria-hidden="true">⚠️</span> Main threats to your rank</div>
-      <div class="th-pills" id="th-pills"></div>
-      <p class="meta th-note" id="th-note"></p>
-      <div class="th-wrap">
-        <table class="th-table">
-          <thead id="th-head"></thead>
-          <tbody id="th-body"></tbody>
-        </table>
+        <p class="meta" id="team-note"></p>
+
+        <section id="content"></section>
+        <section id="rank-gains-slot"></section>
+        <section id="summary-slot"></section>
+
+        <section class="rg-card">
+          <div class="rg-head"><span aria-hidden="true">📈</span> Rank Gains</div>
+          <p class="rg-desc">
+            Here you can see the green arrows you get from your players and how close they are to a price rise/fall.
+            <a href="/prices">Full price predictor →</a>
+          </p>
+          <div class="rg-colhead"><span>Progress towards price rise/fall</span></div>
+          <div id="rg-body"></div>
+        </section>
+
+        <section class="pt-card">
+          <div class="pt-head"><span aria-hidden="true">🔥</span> Popular transfers (Top 10k)</div>
+          <div id="pop-body"></div>
+        </section>
+
+        <section class="th-card">
+          <div class="th-head"><span aria-hidden="true">⚠️</span> Main threats to your rank</div>
+          <div class="th-pills" id="th-pills"></div>
+          <p class="meta th-note" id="th-note"></p>
+          <div class="th-wrap">
+            <table class="th-table">
+              <thead id="th-head"></thead>
+              <tbody id="th-body"></tbody>
+            </table>
+          </div>
+          <p class="th-more"><button id="th-more" type="button" hidden>Show more</button></p>
+        </section>
       </div>
-      <p class="th-more"><button id="th-more" type="button" hidden>Show more</button></p>
-    </section>
+
+      <aside class="mt-side" aria-label="Player filters">
+        <div class="mt-sidetabs" role="tablist">
+          <button type="button" role="tab" class="is-on" data-side="players" aria-selected="true">Players</button>
+          <button type="button" role="tab" data-side="watch" aria-selected="false">Watchlist</button>
+          <button type="button" role="tab" data-side="summary" aria-selected="false">Summary</button>
+        </div>
+        <div class="mt-sidebody" id="side-body"></div>
+      </aside>
+    </div>
   </main>
 
   <footer>
