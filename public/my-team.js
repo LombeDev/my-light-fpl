@@ -1,13 +1,15 @@
-/* my-team.js: My team page. Gameweek summary at the top, the squad, Rank Gains, Popular transfers (Top 10k)
-   and Main threats to your rank. Page key: team-view. Loads after app.js and team-view.js. */
+/* my-team.js: My team. Gameweek banner, deadline, summary tiles, pitch and list views, side panel,
+   and the Rank Gains, Popular transfers and Threats cards kept from before.
+   Page key: team-view. Loads after app.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
-  const RISE_NET = 220000; // net transfers for a price move to reach 100%
+  const RISE_NET = 220000;
   const PAGE = 10;
+  const LIST_GWS = 6;
 
   const PILLS = [
     ["all", "All"],
@@ -19,8 +21,9 @@
   ];
 
   let snap = null;
-  let gw = 1;
   let session = null;
+  let gw = 1;      // gameweek being viewed
+  let liveGw = 1;  // current gameweek, the one with live points
   let me = null;
   let picks = null;
   let gross = 0;
@@ -31,6 +34,9 @@
   let posById = new Map();
   let threatFilter = "all";
   let threatShown = PAGE;
+  let view = "pitch";
+  let side = "players";
+  let deadlineMs = null;
 
   const readyP = new Promise((resolve) =>
     document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
@@ -64,11 +70,14 @@
     document.querySelectorAll('nav a[href="/team"]').forEach((a) => a.setAttribute("aria-current", "page"));
   }
 
-  // Club state this gameweek: finished, started (some fixtures begun), or sleep (not yet started).
-  function clubStates() {
+  const pct = (n) => Math.round(n);
+  const fmt = (n) => (n === null || n === undefined ? "–" : Number(n).toLocaleString());
+
+  // ---------- Club state for a gameweek ----------
+  function clubStates(g) {
     const seen = new Map();
     for (const f of snap.fixtures) {
-      if (f.gw !== gw) continue;
+      if (f.gw !== g) continue;
       for (const t of [f.home, f.away]) {
         const list = seen.get(t) ?? [];
         list.push(f.finished ? "finished" : f.started ? "started" : "sleep");
@@ -86,122 +95,227 @@
 
   const progressOf = (p) => ((p.transfers_in - p.transfers_out) / RISE_NET) * 100;
 
-  // ---------- Gameweek summary ----------
-  // Figures are worked out from data the site has. Safety, off top 10k and off 3m need data we
-  // do not store, so they show dashes. Pre and post substitution ranks use the overall rank.
-  function summaryData() {
-    const live = window.FPL?.live?.() ?? new Map();
-    const xi = picks.picks.filter((x) => x.position <= 11);
-    const bench = picks.picks.filter((x) => x.position > 11);
+  // ---------- Deadline ----------
+  function setupDeadline() {
+    const next = snap.events.find((e) => e.current && !e.finished) ?? snap.events.find((e) => e.next);
+    deadlineMs = next?.deadline_time ? Date.parse(next.deadline_time) : null;
+    const pad = (n) => String(n).padStart(2, "0");
 
-    const liveXi = xi.reduce((s, pk) => s + (live.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1), 0);
-    const benchPts = bench.reduce((s, pk) => s + (live.get(pk.element)?.p ?? 0), 0);
-
-    // Rank history from the overall rank for this gameweek and the previous one, from the snapshot's events.
-    const rank = me.summary_overall_rank ?? null;
-    const prevRank = (around?.rows ?? []).find((r) => r.you)?.rank ?? rank;
-
-    // Star, Flop and Killer: each starter's points gain against the average of the managers around you.
-    const avgGain = around?.rows?.length
-      ? around.rows.reduce((s, r) => s + (r.gw ?? 0), 0) / around.rows.length
-      : 0;
-    const starters = xi
-      .map((pk) => {
-        const p = byId.get(pk.element);
-        if (!p) return null;
-        const pts = (live.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1);
-        return { p, pts, gain: pts - avgGain / 2 };
-      })
-      .filter(Boolean);
-    starters.sort((a, b) => b.gain - a.gain);
-    const star = starters[0] ?? null;
-    const flop = starters.at(-1) ?? null;
-    const killer = starters.slice().sort((a, b) => a.gain - b.gain)[0] ?? null;
-
-    const changePct = rank && prevRank ? ((prevRank - rank) / prevRank) * 100 : 0;
-    const topPct = rank && snap.totalManagers ? (rank / snap.totalManagers) * 100 : null;
-
-    return {
-      liveXi,
-      benchPts,
-      total: me.summary_overall_points ?? 0,
-      rank,
-      prevRank,
-      ranksGained: prevRank && rank ? prevRank - rank : 0,
-      changePct,
-      topPct,
-      star,
-      flop,
-      killer,
+    const tick = () => {
+      if (!deadlineMs) {
+        $("dl-label").textContent = "Deadline not available";
+        return;
+      }
+      const d = new Date(deadlineMs);
+      $("dl-label").textContent =
+        `Deadline ${d.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`;
+      const ms = deadlineMs - Date.now();
+      if (ms <= 0) {
+        ["dl-d", "dl-h", "dl-m", "dl-s"].forEach((id) => ($(id).textContent = "00"));
+        return;
+      }
+      $("dl-d").textContent = pad(Math.floor(ms / 86400000));
+      $("dl-h").textContent = pad(Math.floor((ms % 86400000) / 3600000));
+      $("dl-m").textContent = pad(Math.floor((ms % 3600000) / 60000));
+      $("dl-s").textContent = pad(Math.floor((ms % 60000) / 1000));
     };
+    tick();
+    setInterval(tick, 1000);
   }
 
-  const fmtNum = (n) => (n === null || n === undefined ? "–" : Number(n).toLocaleString());
-  const fmtSigned = (n, suffix = "") => `${n > 0 ? "+" : ""}${Number(n).toLocaleString()}${suffix}`;
-
-  function tile(label, value, extra = "") {
-    return `<div class="gs-tile${extra}"><div class="gs-label">${label}</div><div class="gs-val">${value}</div></div>`;
+  // ---------- Banner ----------
+  function renderBanner() {
+    $("gw-title").textContent = `Gameweek ${gw}`;
+    $("gw-prev").disabled = gw <= 1;
+    $("gw-next").disabled = gw >= (snap.events.length || 38);
   }
 
-  function card(kind, label, icon, pick) {
-    const img = pick
-      ? (() => {
-          const t = teamById.get(pick.p.team);
-          const gk = pick.p.element_type === 1;
-          return t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
-        })()
-      : "";
-    const name = pick ? esc(pick.p.web_name) : "–";
-    const figure = pick
-      ? kind === "killer"
-        ? `Loss: ${pick.pts.toFixed(2)} pts`
-        : `Gain: ${pick.pts >= 0 ? "+" : ""}${pick.pts.toFixed(2)} pts`
-      : "";
-    return `<div class="gs-card is-${kind}">
-      <div class="gs-cardhead"><span aria-hidden="true">${icon}</span> ${label}</div>
-      <div class="gs-shirt">${img}</div>
-      <div class="gs-name">${name}</div>
-      <div class="gs-num">${pick ? pick.pts.toFixed(0) : "–"}</div>
-      <div class="gs-fig">${figure}</div>
+  // ---------- Summary tiles ----------
+  function renderTiles() {
+    const xi = picks?.picks.filter((x) => x.position <= 11) ?? [];
+    const used = picks?.entry_history?.event_transfers ?? 0;
+    const cost = picks?.entry_history?.event_transfers_cost ?? 0;
+    const free = picks?.entry_history?.free_transfers ?? null;
+    const bank = picks?.entry_history?.bank ?? null;
+
+    $("tile-tr").textContent = free === null ? "–" : `${used} / ${free}`;
+    $("tile-cost").textContent = `${cost} pts`;
+    $("tile-bank").textContent = bank === null ? "–" : `£${(bank / 10).toFixed(1)}m`;
+
+    // Expected points for this gameweek, from FPL's ep_this for the starting XI, with captaincy.
+    const xpts = xi.reduce((s, pk) => {
+      const p = byId.get(pk.element);
+      return s + (p ? Number(p.ep_this ?? 0) * (pk.multiplier ?? 1) : 0);
+    }, 0);
+    $("tile-xpts").textContent = xi.length ? xpts.toFixed(1) : "–";
+  }
+
+  // ---------- Player cards in the pitch view (the squad, as before) ----------
+  function playerTile(pk, live) {
+    const p = byId.get(pk.element);
+    if (!p) return "";
+    const t = teamById.get(p.team);
+    const gk = p.element_type === 1;
+    const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
+    const badge = pk.is_captain
+      ? `<span class="mt-cap">C</span>`
+      : pk.is_vice_captain
+        ? `<span class="mt-cap is-v">V</span>`
+        : "";
+    const d = live.get(p.id);
+    const pts = d ? d.p : "–";
+    return `<div class="mt-pcard">
+      <div class="mt-pshirt">${img}${badge}</div>
+      <div class="mt-pname">${esc(p.web_name)}</div>
+      <div class="mt-ppts">${pts}</div>
     </div>`;
   }
 
-  function renderSummary() {
-    const d = summaryData();
-    const gainsTxt = fmtSigned(d.liveXi, "");
-    const ranksTxt = fmtSigned(d.ranksGained);
-    const topTxt = d.topPct === null ? "–" : `Top ${d.topPct.toFixed(1)}%`;
-    const changeTxt = `${d.changePct >= 0 ? "+" : ""}${d.changePct.toFixed(2)}%`;
-
-    $("gs-body").innerHTML = `
-      <div class="gs-section-title"><span aria-hidden="true">🔢</span> Points gained: ${gainsTxt}</div>
-      <div class="gs-grid">
-        ${tile("GW live", fmtNum(d.liveXi))}
-        ${tile("Total", fmtNum(d.total))}
-        ${tile("Bench", fmtNum(d.benchPts))}
-        ${tile("Safety", "–")}
-        ${tile("Off top 10k", "–")}
-        ${tile("Off 3m", "–")}
+  function renderPitch() {
+    const live = window.FPL?.live?.() ?? new Map();
+    const xi = picks.picks.filter((x) => x.position <= 11);
+    const bench = picks.picks.filter((x) => x.position > 11);
+    const rows = [1, 2, 3, 4]
+      .map((type) => {
+        const list = xi.filter((pk) => byId.get(pk.element)?.element_type === type);
+        return list.length ? `<div class="mt-prow">${list.map((pk) => playerTile(pk, live)).join("")}</div>` : "";
+      })
+      .join("");
+    $("mt-view").innerHTML = `
+      <div class="mt-pitch">
+        <div class="mt-pitch-bg"></div>
+        <div class="mt-pitch-rows">${rows}</div>
       </div>
-
-      <div class="gs-section-title"><span aria-hidden="true">🌎</span> Ranks gained: ${ranksTxt}</div>
-      <div class="gs-grid">
-        ${tile("Pre-subs", fmtNum(d.rank))}
-        ${tile("Old rank", fmtNum(d.prevRank))}
-        ${tile("Change %", changeTxt, " is-green")}
-        ${tile("Post-subs", fmtNum(d.rank))}
-        ${tile("GW rank", fmtNum(d.rank))}
-        ${tile("Rank %", topTxt)}
-      </div>
-
-      <div class="gs-cards">
-        ${card("star", "Star", "☆", d.star)}
-        ${card("flop", "Flop", "☹", d.flop)}
-        ${card("killer", "Killer", "☠", d.killer)}
+      <div class="mt-bench">
+        <div class="mt-prow">${bench.map((pk) => playerTile(pk, live)).join("")}</div>
       </div>`;
   }
 
-  // ---------- Rank Gains ----------
+  // ---------- List view: a grid with fixtures for the next gameweeks ----------
+  function fixtureGrid() {
+    const teamFixtures = new Map(); // "team:gw" -> [{ label, diff, xpts }]
+    const lastGw = Math.min(snap.events.length || 38, gw + LIST_GWS - 1);
+    for (const f of snap.fixtures) {
+      if (f.gw === null || f.gw < gw || f.gw > lastGw) continue;
+      const add = (team, label, diff, xpts) => {
+        const k = `${team}:${f.gw}`;
+        if (!teamFixtures.has(k)) teamFixtures.set(k, []);
+        teamFixtures.get(k).push({ label, diff, xpts });
+      };
+      const sh = (id) => teamById.get(id)?.short ?? "";
+      add(f.home, `${sh(f.away)}`, f.home_difficulty, null);
+      add(f.away, `${sh(f.home)}`, f.away_difficulty, null);
+    }
+    return { teamFixtures, lastGw };
+  }
+
+  function fdrClass(d) {
+    return d <= 2 ? "fdr-e" : d === 3 ? "fdr-m" : d === 4 ? "fdr-h" : d >= 5 ? "fdr-x" : "fdr-b";
+  }
+
+  function renderList() {
+    const live = window.FPL?.live?.() ?? new Map();
+    const { teamFixtures, lastGw } = fixtureGrid();
+    const gws = [];
+    for (let g = gw; g <= lastGw; g++) gws.push(g);
+
+    const xi = picks.picks.filter((x) => x.position <= 11).map((pk) => ({ pk, bench: false }));
+    const bench = picks.picks.filter((x) => x.position > 11).map((pk) => ({ pk, bench: true }));
+    const all = [...xi, ...bench];
+
+    const head = `<tr>
+      <th class="mt-lname">Player</th>
+      <th class="n">Pts</th>
+      ${gws.map((g) => `<th class="mt-gwh">GW${g}</th>`).join("")}
+    </tr>`;
+
+    const rows = all
+      .map(({ pk, bench: isBench }) => {
+        const p = byId.get(pk.element);
+        if (!p) return "";
+        const t = teamById.get(p.team);
+        const gk = p.element_type === 1;
+        const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
+        const badge = pk.is_captain ? `<span class="mt-cap-s">C</span>` : pk.is_vice_captain ? `<span class="mt-cap-s is-v">V</span>` : "";
+        const d = live.get(p.id);
+        const pts = d ? d.p : "–";
+        const cells = gws
+          .map((g) => {
+            const list = teamFixtures.get(`${p.team}:${g}`) ?? [];
+            if (!list.length) return `<td class="mt-fx"><span class="mt-blank">Blank</span></td>`;
+            return `<td class="mt-fx">${list
+              .map((x) => `<span class="mt-fxp ${fdrClass(x.diff)}">${esc(x.label)}</span>`)
+              .join("")}</td>`;
+          })
+          .join("");
+        return `<tr class="${isBench ? "is-bench" : ""}">
+          <td class="mt-lname">
+            <div class="mt-lplayer">${img}${badge}
+              <div>
+                <div class="mt-lpname">${esc(p.web_name)}</div>
+                <div class="mt-lsub">${esc(t?.short ?? "")} • ${esc(posById.get(p.element_type) ?? "")}</div>
+              </div>
+            </div>
+          </td>
+          <td class="n">${pts}</td>
+          ${cells}
+        </tr>`;
+      })
+      .join("");
+
+    $("mt-view").innerHTML = `<div class="mt-list-wrap"><table class="mt-list">
+      <thead>${head}</thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }
+
+  function renderView() {
+    $("view-pitch").classList.toggle("is-on", view === "pitch");
+    $("view-list").classList.toggle("is-on", view === "list");
+    $("view-pitch").setAttribute("aria-pressed", String(view === "pitch"));
+    $("view-list").setAttribute("aria-pressed", String(view === "list"));
+    if (!picks) {
+      $("mt-view").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
+      return;
+    }
+    if (view === "pitch") renderPitch();
+    else renderList();
+  }
+
+  // ---------- Side panel ----------
+  function renderSide() {
+    document.querySelectorAll("[data-side]").forEach((b) => {
+      const on = b.dataset.side === side;
+      b.classList.toggle("is-on", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+
+    const body = $("side-body");
+    if (side === "players") {
+      const xi = picks?.picks ?? [];
+      body.innerHTML = `
+        <div class="mt-sfilter"><span>Squad</span></div>
+        <div class="mt-slist">${xi
+          .map((pk) => {
+            const p = byId.get(pk.element);
+            if (!p) return "";
+            const t = teamById.get(p.team);
+            const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">` : "";
+            return `<div class="mt-srow">
+              ${img}
+              <div class="mt-sname">${esc(p.web_name)}<small>${esc(t?.short ?? "")} • ${esc(posById.get(p.element_type) ?? "")}</small></div>
+              <div class="mt-scost">£${(p.now_cost / 10).toFixed(1)}m</div>
+            </div>`;
+          })
+          .join("")}</div>`;
+    } else if (side === "watch") {
+      body.innerHTML = `<p class="mt-sempty">Your watchlist will appear here. Add players from the Prices page.</p>`;
+    } else {
+      body.innerHTML = `<p class="mt-sempty">Gameweek summary is shown below the squad.</p>`;
+    }
+  }
+
+  // ---------- Rank Gains (kept from before) ----------
   function placesPerPoint(rows, myRank) {
     const list = (rows ?? []).filter((r) => r.rank && r.total !== undefined);
     if (list.length >= 2) {
@@ -226,7 +340,6 @@
       box.innerHTML = `<p class="rg-empty">Picks are not available yet.</p>`;
       return;
     }
-
     const live = window.FPL?.live?.() ?? new Map();
     const density = placesPerPoint(around?.rows, me?.summary_overall_rank);
 
@@ -236,8 +349,7 @@
         if (!p) return null;
         const each = eachPtFor(p.id, density);
         const base = live.get(p.id)?.p ?? 0;
-        const mult = pk.multiplier ?? 1;
-        const gain = Math.round(base * mult * each);
+        const gain = Math.round(base * (pk.multiplier ?? 1) * each);
         return { p, each, base, gain, progress: progressOf(p) };
       })
       .filter(Boolean)
@@ -255,13 +367,11 @@
     const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
     const up = r.progress >= 0;
     const width = Math.min(100, Math.abs(r.progress));
-    const eachText = r.each ? r.each.toLocaleString() : "–";
-
     return `<div class="rg-row">
       <div class="rg-shirt">${img}</div>
       <div class="rg-main">
         <div class="rg-name">${esc(r.p.web_name)}</div>
-        <div class="rg-each">Each pt: ${eachText} <span class="rg-dot" aria-hidden="true"></span></div>
+        <div class="rg-each">Each pt: ${r.each ? r.each.toLocaleString() : "–"} <span class="rg-dot" aria-hidden="true"></span></div>
       </div>
       <div class="rg-gainbox">
         <div class="rg-pts">${r.base}</div>
@@ -274,7 +384,104 @@
     </div>`;
   }
 
-  // ---------- Popular transfers (Top 10k) ----------
+  // ---------- Gameweek summary (kept from before) ----------
+  function summaryData() {
+    const live = window.FPL?.live?.() ?? new Map();
+    const xi = picks.picks.filter((x) => x.position <= 11);
+    const bench = picks.picks.filter((x) => x.position > 11);
+    const liveXi = xi.reduce((s, pk) => s + (live.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1), 0);
+    const benchPts = bench.reduce((s, pk) => s + (live.get(pk.element)?.p ?? 0), 0);
+    const rank = me.summary_overall_rank ?? null;
+    const prevRank = (around?.rows ?? []).find((r) => r.you)?.rank ?? rank;
+    const avgGain = around?.rows?.length ? around.rows.reduce((s, r) => s + (r.gw ?? 0), 0) / around.rows.length : 0;
+    const starters = xi
+      .map((pk) => {
+        const p = byId.get(pk.element);
+        if (!p) return null;
+        const pts = (live.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1);
+        return { p, pts, gain: pts - avgGain / 2 };
+      })
+      .filter(Boolean);
+    starters.sort((a, b) => b.gain - a.gain);
+    const star = starters[0] ?? null;
+    const flop = starters.at(-1) ?? null;
+    const killer = starters.slice().sort((a, b) => a.gain - b.gain)[0] ?? null;
+    const changePct = rank && prevRank ? ((prevRank - rank) / prevRank) * 100 : 0;
+    const topPct = rank && snap.totalManagers ? (rank / snap.totalManagers) * 100 : null;
+    return {
+      liveXi,
+      benchPts,
+      total: me.summary_overall_points ?? 0,
+      rank,
+      prevRank,
+      ranksGained: prevRank && rank ? prevRank - rank : 0,
+      changePct,
+      topPct,
+      star,
+      flop,
+      killer,
+    };
+  }
+
+  function summaryCard(kind, label, icon, pick) {
+    const img = pick
+      ? (() => {
+          const t = teamById.get(pick.p.team);
+          const gk = pick.p.element_type === 1;
+          return t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
+        })()
+      : "";
+    const figure = pick
+      ? kind === "killer"
+        ? `Loss: ${pick.pts.toFixed(2)} pts`
+        : `Gain: ${pick.pts >= 0 ? "+" : ""}${pick.pts.toFixed(2)} pts`
+      : "";
+    return `<div class="gs-card is-${kind}">
+      <div class="gs-cardhead"><span aria-hidden="true">${icon}</span> ${label}</div>
+      <div class="gs-shirt">${img}</div>
+      <div class="gs-name">${pick ? esc(pick.p.web_name) : "–"}</div>
+      <div class="gs-num">${pick ? pick.pts.toFixed(0) : "–"}</div>
+      <div class="gs-fig">${figure}</div>
+    </div>`;
+  }
+
+  function renderSummary() {
+    if (!picks) {
+      $("summary-slot").innerHTML = "";
+      return;
+    }
+    const d = summaryData();
+    const tile = (label, value, extra = "") =>
+      `<div class="gs-tile${extra}"><div class="gs-label">${label}</div><div class="gs-val">${value}</div></div>`;
+    $("summary-slot").innerHTML = `
+      <div class="gs-card-wrap">
+        <div class="gs-section-title"><span aria-hidden="true">🔢</span> Points gained: ${d.liveXi >= 0 ? "+" : ""}${d.liveXi}</div>
+        <div class="gs-grid">
+          ${tile("GW live", fmt(d.liveXi))}
+          ${tile("Total", fmt(d.total))}
+          ${tile("Bench", fmt(d.benchPts))}
+          ${tile("Safety", "–")}
+          ${tile("Off top 10k", "–")}
+          ${tile("Off 3m", "–")}
+        </div>
+        <div class="gs-section-title"><span aria-hidden="true">🌎</span> Ranks gained: ${d.ranksGained >= 0 ? "+" : ""}${fmt(d.ranksGained)}</div>
+        <div class="gs-grid">
+          ${tile("Pre-subs", fmt(d.rank))}
+          ${tile("Old rank", fmt(d.prevRank))}
+          ${tile("Change %", `${d.changePct >= 0 ? "+" : ""}${d.changePct.toFixed(2)}%`, " is-green")}
+          ${tile("Post-subs", fmt(d.rank))}
+          ${tile("GW rank", fmt(d.rank))}
+          ${tile("Rank %", d.topPct === null ? "–" : `Top ${d.topPct.toFixed(1)}%`)}
+        </div>
+        <div class="gs-cards">
+          ${summaryCard("star", "Star", "☆", d.star)}
+          ${summaryCard("flop", "Flop", "☹", d.flop)}
+          ${summaryCard("killer", "Killer", "☠", d.killer)}
+        </div>
+      </div>`;
+  }
+
+  // ---------- Popular transfers and threats (kept from before) ----------
   function chip(p) {
     if (!p) return `<span class="pt-name">Unknown</span>`;
     const t = teamById.get(p.team);
@@ -297,36 +504,31 @@
       .map((t) => {
         const net = t.net ?? 0;
         const cls = net > 0 ? "is-up" : net < 0 ? "is-down" : "is-zero";
-        const sign = net > 0 ? "+" : "";
         return `<div class="pt-row">
           <span class="pt-pct">${t.pct.toFixed(2)}%</span>
           <span class="pt-from">${chip(byId.get(t.out))}<span class="pt-cnt">${t.outCount ?? ""}</span></span>
           <span class="pt-arrow" aria-hidden="true">→</span>
           <span class="pt-to">${chip(byId.get(t.in))}<span class="pt-cnt">${t.inCount ?? ""}</span></span>
-          <span class="pt-num ${cls}">${sign}${net}</span>
+          <span class="pt-num ${cls}">${net > 0 ? "+" : ""}${net}</span>
         </div>`;
       })
       .join("");
   }
 
-  // ---------- Main threats to your rank ----------
   function threatRows() {
     if (!sample?.sampled) return null;
     const live = window.FPL?.live?.() ?? new Map();
-    const states = clubStates();
+    const states = clubStates(liveGw);
     const xi = new Set(picks.picks.filter((x) => x.position <= 11).map((x) => x.element));
     const bench = new Set(picks.picks.filter((x) => x.position > 11).map((x) => x.element));
-
     const rows = [];
     for (const key of Object.keys(sample.owned)) {
       const id = Number(key);
       const p = byId.get(id);
       if (!p) continue;
-
       const eo = (sample.owned[key] ?? 0) + (sample.captain?.[key] ?? 0);
       const delta = (xi.has(id) ? 100 : 0) - eo;
       if (delta >= 0) continue;
-
       const d = live.get(id);
       const st = states.get(p.team);
       let status;
@@ -334,7 +536,6 @@
       else if (st === "finished") status = d && d.m === 0 ? "didnt" : "played";
       else if (st === "started") status = "playing";
       else status = "toplay";
-
       const pts = d ? d.p : null;
       rows.push({
         p,
@@ -347,7 +548,6 @@
         progress: progressOf(p),
       });
     }
-
     rows.sort((a, b) => (b.lost ?? -1) - (a.lost ?? -1) || a.delta - b.delta);
     return rows;
   }
@@ -388,7 +588,6 @@
       $("th-more").hidden = true;
       return;
     }
-
     $("th-note").textContent = "";
     $("th-head").innerHTML = `<tr>
       <th class="th-namecol">Player</th>
@@ -397,71 +596,83 @@
       <th class="n">Pts Lost</th>
       <th class="n">Progress towards price rise/fall</th>
     </tr>`;
-
     const list = all.filter(matchesFilter);
     const shown = list.slice(0, threatShown);
-    $("th-body").innerHTML = shown.length
-      ? shown.map(threatLine).join("")
-      : `<tr><td colspan="5">No players match.</td></tr>`;
-
+    $("th-body").innerHTML = shown.length ? shown.map(threatLine).join("") : `<tr><td colspan="5">No players match.</td></tr>`;
     const btn = $("th-more");
     btn.hidden = list.length <= threatShown;
     btn.textContent = `Show more (${Math.max(0, list.length - threatShown)} left)`;
   }
 
-  // ---------- Load and draw ----------
-  async function load() {
+  // ---------- Loading and drawing ----------
+  async function loadGw(g) {
     const auth = { headers: { Authorization: `Bearer ${session.token}` } };
-    const [meRes, picksRes, mgrRes, sampleRes, aroundRes] = await Promise.all([
+    const [picksRes, mgrRes] = await Promise.all([
+      api(`/picks/${session.entryId}/${g}`).catch(() => null),
+      g === liveGw ? api(`/managers?ids=${session.entryId}`).catch(() => null) : Promise.resolve(null),
+    ]);
+    picks = picksRes;
+    gross = mgrRes?.managers?.[0]?.gross ?? picksRes?.entry_history?.points ?? 0;
+    void auth;
+  }
+
+  async function loadAll() {
+    const auth = { headers: { Authorization: `Bearer ${session.token}` } };
+    const [meRes, sampleRes, aroundRes] = await Promise.all([
       api("/me", auth),
-      api(`/picks/${session.entryId}/${gw}`).catch(() => null),
-      api(`/managers?ids=${session.entryId}`).catch(() => null),
       api("/sample").catch(() => null),
       api(`/around/${session.entryId}`).catch(() => null),
     ]);
     me = meRes.entry;
-    picks = picksRes;
     sample = sampleRes;
     around = aroundRes;
-    gross = mgrRes?.managers?.[0]?.gross ?? picksRes?.entry_history?.points ?? 0;
+    await loadGw(gw);
     draw();
   }
 
   function draw() {
     const e = me;
-    $("team-name").textContent = e.name;
     $("team-meta").textContent =
-      `${e.player_first_name} ${e.player_last_name} · ${e.summary_overall_points} pts · rank ${
+      `${e.name} · ${e.player_first_name} ${e.player_last_name} · ${e.summary_overall_points} pts · rank ${
         e.summary_overall_rank ? Number(e.summary_overall_rank).toLocaleString() : "–"
-      } · GW${gw}`;
+      }`;
+    $("team-note").textContent = gw !== liveGw ? "Viewing a past or upcoming gameweek." : "";
 
-    if (!picks) {
-      $("content").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
-      $("gs-body").innerHTML = "";
-    } else {
-      const live = window.FPL?.live?.() ?? new Map();
-      window.TEAMVIEW.render($("content"), picks, {
-        snap,
-        live,
-        hasLive: live.size > 0,
-        gw,
-        gross,
-        rank: e.summary_overall_rank ?? null,
-        back: false,
-      });
-      renderSummary();
-    }
-
+    renderBanner();
+    renderTiles();
+    renderView();
+    renderSide();
+    renderSummary();
     renderRankGains();
     renderPopular();
     renderThreats();
   }
 
-  async function init() {
-    setNavCurrent();
-    session = readSession();
-    if (!session) return location.assign("/login");
-
+  function wireControls() {
+    $("gw-prev").addEventListener("click", async () => {
+      gw = Math.max(1, gw - 1);
+      await loadGw(gw);
+      draw();
+    });
+    $("gw-next").addEventListener("click", async () => {
+      gw = Math.min(snap.events.length || 38, gw + 1);
+      await loadGw(gw);
+      draw();
+    });
+    $("view-pitch").addEventListener("click", () => {
+      view = "pitch";
+      renderView();
+    });
+    $("view-list").addEventListener("click", () => {
+      view = "list";
+      renderView();
+    });
+    document.querySelectorAll("[data-side]").forEach((b) =>
+      b.addEventListener("click", () => {
+        side = b.dataset.side;
+        renderSide();
+      }),
+    );
     $("th-pills").addEventListener("click", (e) => {
       const b = e.target.closest("[data-filter]");
       if (!b) return;
@@ -473,9 +684,18 @@
       threatShown += PAGE;
       renderThreats();
     });
+  }
+
+  async function init() {
+    setNavCurrent();
+    session = readSession();
+    if (!session) return location.assign("/login");
+
+    wireControls();
+    setupDeadline();
 
     try {
-      await load();
+      await loadAll();
       document.addEventListener("fpl:live", () => {
         if (me) draw();
       });
@@ -491,7 +711,8 @@
       $("team-note").textContent = "Could not load data. Try again shortly.";
       return;
     }
-    gw = (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
+    liveGw = (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
+    gw = liveGw;
     byId = new Map(snap.players.map((p) => [p.id, p]));
     teamById = new Map(snap.teams.map((t) => [t.id, t]));
     posById = new Map(snap.positions.map((p) => [p.id, p.short]));
