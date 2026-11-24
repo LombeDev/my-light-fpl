@@ -20,6 +20,7 @@ export interface SlimPlayer {
   element_type: number;
   now_cost: number;
   total_points: number;
+    ep_this: number;
   form: number;
   selected_by_percent: number;
   expected_goals: number;
@@ -93,6 +94,7 @@ interface RawElement {
   cost_change_event: number;
   cost_change_start: number;
   status: string;
+    ep_this: string;
 }
 
 interface RawStat {
