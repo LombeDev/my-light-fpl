@@ -2545,3 +2545,222 @@ tr.you td { font-weight: 700; background: var(--hover); }
 .gs-num { margin-top: 6px; font-size: 18px; font-weight: 800; color: #111111; }
 .gs-fig { margin-top: 2px; font-size: 11px; font-weight: 600; color: #1f9d55; }
 .gs-cards > .gs-card.is-killer .gs-fig { color: #d64545; }
+
+
+/* My team, in the fpl.team style: banner, deadline, squad grid with fixtures and xPts, side filters.
+   These rules come last, so they override the earlier My team styles. */
+.mt-who {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.mt-banner {
+  grid-template-columns: 90px 1fr 90px;
+  height: 40px;
+  background: linear-gradient(90deg, #3fd3fb 0%, #46b3f6 100%);
+  font-size: 15px;
+}
+.mt-gwbtn {
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #00ff85;
+  color: #06140d;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mt-gwbtn:disabled {
+  opacity: 0.35;
+}
+
+.mt-deadline {
+  margin: 16px 0 14px;
+}
+.mt-dl-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+.mt-dl-units {
+  gap: 8px;
+  margin-top: 10px;
+}
+.mt-dl-unit {
+  min-width: 52px;
+  padding: 8px 6px 6px;
+  border-radius: 4px;
+  background: #5e1747;
+  font-size: 26px;
+  font-weight: 800;
+}
+.mt-dl-unit small {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  opacity: 0.9;
+}
+
+/* Squad grid */
+.mt-list-wrap {
+  overflow-x: auto;
+  border: 1px solid #e4e6ea;
+  border-radius: 10px;
+  background: #ffffff;
+}
+.mt-list {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.mt-list th {
+  padding: 12px 6px 8px;
+  background: #ffffff;
+  color: #111111;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  border-bottom: 1px solid #eef0f3;
+}
+.mt-list th.mt-lname,
+.mt-list td.mt-lname {
+  text-align: left;
+  min-width: 170px;
+}
+.mt-list td {
+  padding: 10px 6px;
+  border-bottom: 1px solid #eef0f3;
+  vertical-align: middle;
+}
+.mt-list tr:last-child td {
+  border-bottom: 0;
+}
+.mt-list tr.is-bench .mt-lpname {
+  color: #6b7280;
+}
+.mt-empty {
+  text-align: center;
+  color: #6b7280;
+}
+
+.mt-cell {
+  min-width: 84px;
+  text-align: center;
+}
+
+.mt-lplayer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mt-lplayer img {
+  width: 24px;
+  height: auto;
+  flex-shrink: 0;
+}
+.mt-lpname {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111111;
+  white-space: nowrap;
+}
+.pl-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #9ca3af;
+  border-radius: 50%;
+  color: #6b7280;
+  font-family: Georgia, serif;
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+}
+
+/* Fixture blocks, coloured by difficulty, with an xPts strip underneath. */
+.fx {
+  display: block;
+  width: 100%;
+  margin-bottom: 2px;
+  padding: 8px 4px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.xp {
+  display: block;
+  width: 100%;
+  padding: 3px 4px;
+  border-radius: 0 0 3px 3px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.xp-mid { background: #fff7d6; color: #b8860b; }
+.xp-low { background: #ffe3ec; color: #d81b60; }
+.xp-none { background: #f3f4f6; color: #9ca3af; }
+
+.fdr-e { background: #00ff85; color: #06210f; }
+.fdr-m { background: #e5e7eb; color: #111111; }
+.fdr-h { background: #ff1f5a; color: #ffffff; }
+.fdr-x { background: #7d0f35; color: #ffffff; }
+.fdr-b { background: #cfd3d8; color: #111111; }
+
+/* Side filters */
+.mt-sidebody {
+  padding: 14px 16px 18px;
+}
+.mt-frow2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.mt-rng span {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0b1f2e;
+}
+.mt-rng span b {
+  font-weight: 500;
+}
+.mt-rng input {
+  width: 100%;
+  accent-color: #1d6fe0;
+}
+.mt-f {
+  display: block;
+  margin-bottom: 12px;
+}
+.mt-f span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0b1f2e;
+}
+.mt-f select,
+.mt-f input {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 2px solid #14f195;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #111111;
+  font-size: 14px;
+}
