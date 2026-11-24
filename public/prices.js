@@ -10,21 +10,31 @@
   const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
   const PAGE = 25;
 
-  // Estimate settings. Confirm these against real price changes and adjust here.
-  const RISE_NET = 220000; // net transfers for a rise to reach 100%
-  const FALL_NET = 220000; // net transfers for a fall to reach 100%
-  const OWN_FLOOR = 1.7; // players owned by less than this are left out of predictions
-  const PRICE_HOUR_UTC = 23; // overnight price change time in UTC. Check against FPL's own countdown.
-  const SAMPLE_MIN = 15; // minimum gap between progress samples used for per-hour rates
+  // Calibration settings. Tune against observed overnight FPL price changes.
+  const OWN_FLOOR = 1.7; // minimum ownership (%) for Summary rise/fall callouts
+  const PRICE_HOUR_UTC = 23; // overnight price change time in UTC
+  const SAMPLE_MIN = 15; // minimum interval (minutes) between rate samples
+
+  // Ownership tiers: [minOwnershipPct, riseThresholdNet, fallThresholdNet]
+  // Lower-owned players move on smaller net volume; higher-owned template players require larger net volume.
+  const OWN_TIERS = [
+    [50.0, 340000, 310000],
+    [30.0, 275000, 250000],
+    [15.0, 220000, 195000],
+    [5.0,  165000, 145000],
+    [1.7,  125000, 110000],
+    [0.0,   90000,  85000],
+  ];
 
   const KEY_PROG = "fpl.progress";
   const KEY_WATCH = "fpl.watch";
   const KEY_BASE = "fpl.baseline";
+  const KEY_META = "fpl.priceMeta";
 
   let snap = null;
   let teamById = new Map();
   let posById = new Map();
-  let rates = {}; // player id -> progress change per hour, in percentage points
+  let rates = {}; // player id -> progress change per hour (percentage points)
   let watch = [];
   let mine = new Set();
   const state = { tab: "table", sub: "all", list: "risers", pct: true, limit: PAGE, pastLimit: PAGE };
@@ -32,24 +42,110 @@
   // ---------- Storage ----------
   const readJSON = (key, fallback) => {
     try {
-      return JSON.parse(localStorage.getItem(key)) ?? fallback;
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
     } catch {
       return fallback;
     }
   };
 
-  // ---------- Maths ----------
-  const net = (p) => p.transfers_in - p.transfers_out;
-
-  // Progress toward the next change. Positive means rising, negative falling, 100 means the threshold is reached.
-  const signedProgress = (p) => {
-    const n = net(p);
-    if (!n) return 0;
-    const threshold = n > 0 ? RISE_NET : FALL_NET;
-    return (n / threshold) * 100;
+  const writeJSON = (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Ignore storage quota or restricted mode errors
+    }
   };
 
-  // Next overnight price change, as a UTC timestamp.
+  // ---------- FPL Price Model Helpers ----------
+  const netTransfers = (p) => (Number(p.transfers_in) || 0) - (Number(p.transfers_out) || 0);
+
+  const ownershipPct = (p) => {
+    const v = Number(p.selected_by_percent);
+    return Number.isFinite(v) ? v : 0;
+  };
+
+  function tierThresholds(p) {
+    const own = ownershipPct(p);
+    for (const [minOwn, riseNet, fallNet] of OWN_TIERS) {
+      if (own >= minOwn) return { riseNet, fallNet };
+    }
+    return { riseNet: 90000, fallNet: 85000 };
+  }
+
+  function flagInfo(p) {
+    const status = String(p.status ?? "a").toLowerCase();
+    const chance = p.chance_of_playing_next_round;
+    const hasChance = typeof chance === "number" && Number.isFinite(chance);
+
+    if (status === "i") return { code: "INJ", riseMult: 1.0, fallMult: 1.25 };
+    if (status === "s") return { code: "SUSP", riseMult: 1.05, fallMult: 1.15 };
+    if (status === "u") return { code: "UNAV", riseMult: 1.05, fallMult: 1.2 };
+    if (status === "d" || (hasChance && chance < 75)) {
+      return { code: "DOUBT", riseMult: 1.0, fallMult: 1.1 };
+    }
+    return { code: "", riseMult: 1.0, fallMult: 1.0 };
+  }
+
+  function effectiveThreshold(p, dir) {
+    const { riseNet, fallNet } = tierThresholds(p);
+    const fl = flagInfo(p);
+    return dir > 0 ? riseNet * fl.riseMult : fallNet * fl.fallMult;
+  }
+
+  // Optional hook if upstream snapshot provides explicit progress/prediction fields.
+  function readOfficialProgress(p) {
+    const candidates = [
+      p.price_progress,
+      p.change_progress,
+      p.progress_pct,
+      p.price_change_progress,
+    ];
+    for (const val of candidates) {
+      if (typeof val === "number" && Number.isFinite(val)) return val;
+    }
+    return null;
+  }
+
+  // Positive = rising progress, negative = falling progress, +/-100 = threshold reached.
+  function signedProgress(p) {
+    const official = readOfficialProgress(p);
+    if (official !== null) return official;
+
+    const n = netTransfers(p);
+    if (!n) return 0;
+    const dir = n > 0 ? 1 : -1;
+    const threshold = effectiveThreshold(p, dir);
+    return (n / threshold) * 100;
+  }
+
+  // Detect price changes or gameweek rollovers so stale baselines don't skew rate tracking.
+  function syncPriceMeta(now) {
+    const eventId = snap.event ?? snap.gameweek ?? null;
+    const prev = readJSON(KEY_META, null);
+    const costs = {};
+    let resetNeeded = false;
+
+    if (prev && eventId !== null && prev.event !== null && prev.event !== eventId) {
+      resetNeeded = true;
+    }
+
+    for (const p of snap.players) {
+      costs[p.id] = p.now_cost;
+      if (prev?.costs && prev.costs[p.id] !== undefined && prev.costs[p.id] !== p.now_cost) {
+        resetNeeded = true;
+      }
+    }
+
+    if (resetNeeded) {
+      writeJSON(KEY_PROG, { t: now, p: {}, rate: {} });
+      rates = {};
+    }
+
+    writeJSON(KEY_META, { event: eventId, costs, updatedAt: now });
+  }
+
+  // Next overnight price change as a UTC epoch ms timestamp.
   function nextChange(now) {
     const d = new Date(now);
     const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), PRICE_HOUR_UTC);
@@ -58,7 +154,7 @@
 
   const hoursToChange = (now) => (nextChange(now) - now) / 3600000;
 
-  // Projection to the next change, using the per-hour rate once we have one.
+  // Projection to threshold using measured per-hour rate.
   function predict(id, sp, now) {
     const a = Math.abs(sp);
     const dir = Math.sign(sp);
@@ -68,7 +164,7 @@
     const r = rates[id];
     if (r === undefined) return { proj: null, label: "–" };
 
-    const rd = r * dir; // rate in the direction of travel
+    const rd = r * dir;
     const proj = a + rd * hoursToChange(now);
     if (rd <= 0) return { proj, label: "Stalling" };
 
@@ -77,27 +173,53 @@
     return { proj, label: days > 2 ? ">2 days" : `${rounded} day${rounded === 1 ? "" : "s"}` };
   }
 
-  // Store one progress sample per interval, then derive each player's per-hour change from the last sample.
+  // Record periodic progress samples and compute per-hour rates without zeroing unchanged samples.
   function updateRates(now) {
     const cur = {};
     for (const p of snap.players) cur[p.id] = signedProgress(p);
 
-    let st = readJSON(KEY_PROG, null);
-    if (!st) {
-      st = { t: now, p: cur, rate: {} };
-    } else if (now - st.t >= SAMPLE_MIN * 60000) {
-      const dt = (now - st.t) / 3600000;
-      const rate = {};
-      for (const id in cur) {
-        if (st.p[id] !== undefined) rate[id] = (cur[id] - st.p[id]) / dt;
-      }
-      st = { t: now, p: cur, rate };
+    const st = readJSON(KEY_PROG, null);
+    if (!st || !st.t || !st.p) {
+      const fresh = { t: now, p: cur, rate: {} };
+      writeJSON(KEY_PROG, fresh);
+      rates = {};
+      return;
     }
-    localStorage.setItem(KEY_PROG, JSON.stringify(st));
-    rates = st.rate ?? {};
+
+    const elapsedMs = now - st.t;
+    if (elapsedMs >= SAMPLE_MIN * 60000) {
+      const dt = elapsedMs / 3600000;
+      const nextRate = { ...(st.rate ?? {}) };
+      const nextSample = { ...(st.p ?? {}) };
+      let anyChange = false;
+
+      for (const id in cur) {
+        const prevVal = st.p[id];
+        if (prevVal === undefined) {
+          nextSample[id] = cur[id];
+          anyChange = true;
+          continue;
+        }
+        const delta = cur[id] - prevVal;
+        if (Math.abs(delta) > 1e-6) {
+          nextRate[id] = delta / dt;
+          nextSample[id] = cur[id];
+          anyChange = true;
+        } else if (nextRate[id] === undefined) {
+          nextRate[id] = 0;
+        }
+      }
+
+      if (anyChange) {
+        writeJSON(KEY_PROG, { t: now, p: nextSample, rate: nextRate });
+      }
+      rates = nextRate;
+    } else {
+      rates = st.rate ?? {};
+    }
   }
 
-  // ---------- Shared pieces ----------
+  // ---------- Shared UI Pieces ----------
   const shirt = (p) => {
     const t = teamById.get(p.team);
     const gk = p.element_type === 1;
@@ -106,21 +228,32 @@
       : "";
   };
 
+  const flagBadge = (p) => {
+    const fl = flagInfo(p);
+    return fl.code ? ` <span class="badge flag-${fl.code.toLowerCase()}">${esc(fl.code)}</span>` : "";
+  };
+
+  const starAttrs = (id, watching) => ({
+    pressed: String(watching),
+    label: watching ? "Remove from watchlist" : "Add to watchlist",
+    glyph: watching ? "★" : "☆",
+  });
+
   const nameCell = (p, withStar) => {
     const watching = watch.includes(p.id);
+    const sa = starAttrs(p.id, watching);
     const star = withStar
-      ? `<button class="star" type="button" data-watch="${p.id}" aria-pressed="${watching}" aria-label="${
-          watching ? "Remove from watchlist" : "Add to watchlist"
-        }">${watching ? "★" : "☆"}</button>`
+      ? `<button class="star" type="button" data-watch="${p.id}" aria-pressed="${sa.pressed}" aria-label="${sa.label}">${sa.glyph}</button>`
       : "";
     return `<div class="pl">${shirt(p)}<div>
-      <div class="pname">${esc(p.web_name)}</div>
-      <div class="small muted">${esc(posById.get(p.element_type))} ${money(p.now_cost)}</div>
+      <div class="pname">${esc(p.web_name)}${flagBadge(p)}</div>
+      <div class="small muted">${esc(posById.get(p.element_type))} ${money(p.now_cost)} · ${ownershipPct(p).toFixed(1)}%</div>
     </div>${star}</div>`;
   };
 
-  // "Show more" button under a table. Created once, then kept in sync.
   function moreBtn(id, tbody, total, limit, onClick) {
+    const wrap = tbody.closest(".table-wrap");
+    if (!wrap) return;
     let btn = document.getElementById(id);
     if (!btn) {
       const p = document.createElement("p");
@@ -128,7 +261,7 @@
       btn.id = id;
       btn.type = "button";
       p.append(btn);
-      tbody.closest(".table-wrap").after(p);
+      wrap.after(p);
       btn.addEventListener("click", onClick);
     }
     const left = total - limit;
@@ -136,7 +269,7 @@
     btn.textContent = `Show more (${Math.max(0, left)} left)`;
   }
 
-  // ---------- Table tab ----------
+  // ---------- Table Tab ----------
   function tableItems() {
     const dirWant = state.list === "risers" ? 1 : -1;
     const pos = Number($("pos").value);
@@ -200,15 +333,15 @@
     });
 
     $("table-note").textContent = Object.keys(rates).length
-      ? "Per hr and day predictions use progress measured on this device."
-      : "Per hr and day predictions appear after about 15 minutes of progress history on this device.";
+      ? "Scaled by ownership tier and player status; per-hr rates use progress measured on this device."
+      : "Scaled by ownership tier and player status; per-hr rates appear after ~15 min of samples on this device.";
   }
 
-  // ---------- Summary tab ----------
+  // ---------- Summary Tab ----------
   function renderSummary() {
     const groups = { rise: [], riseMaybe: [], fall: [], fallMaybe: [] };
     for (const p of snap.players) {
-      if (p.selected_by_percent < OWN_FLOOR) continue;
+      if (ownershipPct(p) < OWN_FLOOR) continue;
       const sp = signedProgress(p);
       const a = Math.abs(sp);
       if (a < 95) continue;
@@ -218,11 +351,13 @@
     for (const g of Object.values(groups)) g.sort((x, y) => y.a - x.a);
 
     const row = ({ p, sp }) => {
+      const n = netTransfers(p);
+      const netStr = `${n >= 0 ? "+" : "−"}${Math.abs(n).toLocaleString()} net`;
       const value = state.pct
         ? `<span class="${sp > 0 ? "up" : "down"}">${signedPct(sp)}</span>`
-        : `${net(p).toLocaleString()} net`;
+        : netStr;
       return `<div class="sumrow">
-        <div class="pl">${shirt(p)}<span class="pname">${esc(p.web_name)}</span></div>
+        <div class="pl">${shirt(p)}<span class="pname">${esc(p.web_name)}${flagBadge(p)}</span></div>
         <div class="val"><div>${money(p.now_cost)}</div><div class="small">${value}</div></div>
       </div>`;
     };
@@ -244,10 +379,14 @@
       </div>`;
   }
 
-  // ---------- Trends tab ----------
+  // ---------- Trends Tab ----------
   function renderTrends() {
     const top = snap.players
-      .map((p) => ({ p, vol: p.transfers_in + p.transfers_out, n: net(p) }))
+      .map((p) => ({
+        p,
+        vol: (Number(p.transfers_in) || 0) + (Number(p.transfers_out) || 0),
+        n: netTransfers(p),
+      }))
       .filter((x) => x.vol > 0)
       .sort((a, b) => b.vol - a.vol)
       .slice(0, 24);
@@ -260,7 +399,7 @@
     const max = top[0].vol;
     const cols = 6;
     const cellW = 150;
-    const cellH = 110;
+    const cellH = 124;
     const rows = Math.ceil(top.length / cols);
     const width = cols * cellW;
     const height = rows * cellH;
@@ -269,11 +408,12 @@
       .map(({ p, vol, n }, i) => {
         const cx = (i % cols) * cellW + cellW / 2;
         const cy = Math.floor(i / cols) * cellH + cellH / 2;
-        const r = 12 + 34 * Math.sqrt(vol / max);
+        const r = 12 + 28 * Math.sqrt(vol / max);
         const label = p.web_name.length > 9 ? `${p.web_name.slice(0, 8)}…` : p.web_name;
+        const netLabel = `${n >= 0 ? "+" : "−"}${Math.abs(n).toLocaleString()}`;
         return `<g>
-          <title>${esc(p.web_name)}: ${vol.toLocaleString()} transfers (${n >= 0 ? "+" : ""}${n.toLocaleString()} net)</title>
-          <circle class="bub ${n > 0 ? "rise" : "fall"}" cx="${cx}" cy="${cy}" r="${r.toFixed(1)}"></circle>
+          <title>${esc(p.web_name)}: ${vol.toLocaleString()} total (${netLabel} net)</title>
+          <circle class="bub ${n >= 0 ? "rise" : "fall"}" cx="${cx}" cy="${cy}" r="${r.toFixed(1)}"></circle>
           <text class="bub-label" x="${cx}" y="${cy + 4}">${esc(label)}</text>
         </g>`;
       })
@@ -282,7 +422,7 @@
     $("trends").innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Transfer trends">${bubbles}</svg>`;
   }
 
-  // ---------- Past tab ----------
+  // ---------- Past Tab ----------
   function renderPast() {
     const all = snap.players
       .filter((p) => p.cost_change_start !== 0)
@@ -314,7 +454,7 @@
   // ---------- Countdown ----------
   function startCountdown() {
     const tick = () => {
-      const ms = nextChange(Date.now()) - Date.now();
+      const ms = Math.max(0, nextChange(Date.now()) - Date.now());
       const h = Math.floor(ms / 3600000);
       const m = Math.floor((ms % 3600000) / 60000);
       const s = Math.floor((ms % 60000) / 1000);
@@ -334,7 +474,9 @@
   }
 
   function refresh() {
-    updateRates(Date.now());
+    const now = Date.now();
+    syncPriceMeta(now);
+    updateRates(now);
     renderCurrent();
     $("meta").textContent = `Updated ${new Date(snap.generatedAt).toLocaleString()}`;
   }
@@ -347,7 +489,6 @@
     renderCurrent();
   }
 
-  // Any change to a filter starts the list again from the first 25.
   const resetTable = () => {
     state.limit = PAGE;
     renderTable(Date.now());
@@ -395,14 +536,22 @@
       renderSummary();
     });
 
-    // Star toggles. One listener on the table body covers every row.
     $("rows").addEventListener("click", (e) => {
       const btn = e.target.closest("[data-watch]");
       if (!btn) return;
       const id = Number(btn.dataset.watch);
-      watch = watch.includes(id) ? watch.filter((x) => x !== id) : [...watch, id];
-      localStorage.setItem(KEY_WATCH, JSON.stringify(watch));
-      renderTable(Date.now());
+      const watching = !watch.includes(id);
+      watch = watching ? [...watch, id] : watch.filter((x) => x !== id);
+      writeJSON(KEY_WATCH, watch);
+
+      if (state.sub === "watch") {
+        renderTable(Date.now());
+      } else {
+        const sa = starAttrs(id, watching);
+        btn.setAttribute("aria-pressed", sa.pressed);
+        btn.setAttribute("aria-label", sa.label);
+        btn.textContent = sa.glyph;
+      }
     });
 
     startCountdown();
