@@ -54,12 +54,20 @@ export interface SlimFixture {
   stats: Record<string, { h: StatPairs; a: StatPairs }>;
 }
 
+export interface SlimEvent {
+  id: number;
+  current: boolean;
+  next: boolean;
+  finished: boolean;
+  deadline_time: string | null;
+}
+
 export interface Snapshot {
   generatedAt: string;
   hash: string;
   teams: { id: number; name: string; short: string; code: number }[];
   positions: { id: number; short: string }[];
-  events: { id: number; current: boolean; next: boolean; finished: boolean }[];
+  events: SlimEvent[];
   players: SlimPlayer[];
   fixtures: SlimFixture[];
 }
@@ -122,7 +130,13 @@ interface RawBootstrap {
   elements: RawElement[];
   teams: { id: number; name: string; short_name: string; code: number }[];
   element_types: { id: number; singular_name_short: string }[];
-  events: { id: number; is_current: boolean; is_next: boolean; finished: boolean }[];
+  events: {
+    id: number;
+    is_current: boolean;
+    is_next: boolean;
+    finished: boolean;
+    deadline_time: string | null;
+  }[];
 }
 
 interface RawLive {
@@ -225,7 +239,15 @@ export async function refreshSnapshot(env: Env): Promise<void> {
   const body = {
     teams: boot.teams.map((t) => ({ id: t.id, name: t.name, short: t.short_name, code: t.code })),
     positions: boot.element_types.map((t) => ({ id: t.id, short: t.singular_name_short })),
-    events: boot.events.map((e) => ({ id: e.id, current: e.is_current, next: e.is_next, finished: e.finished })),
+    events: boot.events.map(
+      (e): SlimEvent => ({
+        id: e.id,
+        current: e.is_current,
+        next: e.is_next,
+        finished: e.finished,
+        deadline_time: e.deadline_time ?? null,
+      }),
+    ),
     players: boot.elements.map(
       (e): SlimPlayer => ({
         id: e.id,
