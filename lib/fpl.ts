@@ -20,7 +20,7 @@ export interface SlimPlayer {
   element_type: number;
   now_cost: number;
   total_points: number;
-    ep_this: number;
+  ep_this: number;
   form: number;
   selected_by_percent: number;
   expected_goals: number;
@@ -94,7 +94,7 @@ interface RawElement {
   cost_change_event: number;
   cost_change_start: number;
   status: string;
-    ep_this: string;
+  ep_this: string;
 }
 
 interface RawStat {
@@ -234,6 +234,7 @@ export async function refreshSnapshot(env: Env): Promise<void> {
         element_type: e.element_type,
         now_cost: e.now_cost,
         total_points: e.total_points,
+        ep_this: round2(num(e.ep_this)),
         form: round2(num(e.form)),
         selected_by_percent: round2(num(e.selected_by_percent)),
         expected_goals: round2(num(e.expected_goals)),
