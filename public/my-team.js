@@ -97,27 +97,37 @@
   }
 
   // ---------- Deadline ----------
-  // Uses the gameweek's deadline from the snapshot. If that isn't there yet, uses the first kickoff
-  // of the gameweek, because FPL's deadline is always the first kickoff.
-  function deadlineMs(snapshot) {
-    const next = snapshot.events.find((e) => e.current && !e.finished) ?? snapshot.events.find((e) => e.next);
-    if (!next) return null;
-    if (next.deadline_time) {
-      const ms = Date.parse(next.deadline_time);
-      if (!Number.isNaN(ms)) return ms;
+  // The next deadline is the earliest one still in the future. This skips a gameweek that has already
+  // passed its deadline but is still marked as current. If the snapshot has no future deadline, it falls
+  // back to the earliest first kickoff still in the future, since FPL's deadline is the first kickoff.
+  function nextDeadlineMs(snapshot, now = Date.now()) {
+    let best = null;
+    for (const e of snapshot.events) {
+      if (!e.deadline_time) continue;
+      const ms = Date.parse(e.deadline_time);
+      if (Number.isNaN(ms) || ms <= now) continue;
+      if (best === null || ms < best) best = ms;
     }
-    const kicks = snapshot.fixtures
-      .filter((f) => f.gw === next.id && f.kickoff)
-      .map((f) => Date.parse(f.kickoff))
-      .filter((ms) => !Number.isNaN(ms));
-    return kicks.length ? Math.min(...kicks) : null;
+    if (best !== null) return best;
+
+    const firstKick = new Map(); // gameweek -> its first kickoff
+    for (const f of snapshot.fixtures) {
+      if (f.gw === null || !f.kickoff) continue;
+      const ms = Date.parse(f.kickoff);
+      if (Number.isNaN(ms)) continue;
+      if (!firstKick.has(f.gw) || ms < firstKick.get(f.gw)) firstKick.set(f.gw, ms);
+    }
+    for (const ms of firstKick.values()) {
+      if (ms > now && (best === null || ms < best)) best = ms;
+    }
+    return best;
   }
 
   function setupDeadline() {
-    const target = deadlineMs(snap);
     const pad = (n) => String(n).padStart(2, "0");
 
     const tick = () => {
+      const target = nextDeadlineMs(snap);
       if (!target) {
         set("dl-label", "Deadline not available");
         return;
@@ -128,10 +138,6 @@
       set("dl-label", `Deadline ${when}`);
 
       const ms = target - Date.now();
-      if (ms <= 0) {
-        ["dl-d", "dl-h", "dl-m", "dl-s"].forEach((id) => set(id, "00"));
-        return;
-      }
       set("dl-d", pad(Math.floor(ms / 86400000)));
       set("dl-h", pad(Math.floor((ms % 86400000) / 3600000)));
       set("dl-m", pad(Math.floor((ms % 3600000) / 60000)));
