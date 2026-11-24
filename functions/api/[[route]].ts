@@ -4,6 +4,7 @@ import { league } from "../../lib/leagues";
 import { livescore } from "../../lib/live";
 import { managers } from "../../lib/managers";
 import { around, pairsFor, sampleSummary } from "../../lib/stats";
+import { gwStats } from "../../lib/gwstats";
 
 const raw = (body: string, cacheControl: string): Response =>
   new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": cacheControl } });
@@ -41,6 +42,9 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       if (path === "managers") return await managers(request, env);
       if (path === "livescore") return await livescore(request, env);
       if (path === "sample") return await sampleSummary(env, bg);
+
+      const gm = /^gwstats\/(\d{1,2})$/.exec(path);
+      if (gm) return await gwStats(Number(gm[1]));
 
       const prm = /^pairs\/(\d{1,9})$/.exec(path);
       if (prm) return await pairsFor(Number(prm[1]), env, bg);
