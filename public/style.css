@@ -2764,3 +2764,14 @@ tr.you td { font-weight: 700; background: var(--hover); }
   color: #111111;
   font-size: 14px;
 }
+
+
+
+
+/* Summary tile values follow the theme, so they are readable in dark mode. */
+.mt-tv {
+  color: var(--text);
+}
+.mt-tv.is-green {
+  color: #1f9d55;
+}
