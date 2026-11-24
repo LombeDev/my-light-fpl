@@ -1,5 +1,5 @@
-/* my-team.js: My team. Gameweek banner, deadline, summary tiles, pitch and list views, side panel,
-   and the Rank Gains, Popular transfers and Threats cards kept from before.
+/* my-team.js: My team. Gameweek banner, deadline, summary tiles, the list view with fixtures,
+   side panel, and the Rank Gains, Popular transfers, Threats and gameweek summary cards.
    Page key: team-view. Loads after app.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
@@ -34,9 +34,7 @@
   let posById = new Map();
   let threatFilter = "all";
   let threatShown = PAGE;
-  let view = "pitch";
   let side = "players";
-  let deadlineMs = null;
 
   const readyP = new Promise((resolve) =>
     document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
@@ -70,8 +68,8 @@
     document.querySelectorAll('nav a[href="/team"]').forEach((a) => a.setAttribute("aria-current", "page"));
   }
 
-  const pct = (n) => Math.round(n);
   const fmt = (n) => (n === null || n === undefined ? "–" : Number(n).toLocaleString());
+  const progressOf = (p) => ((p.transfers_in - p.transfers_out) / RISE_NET) * 100;
 
   // ---------- Club state for a gameweek ----------
   function clubStates(g) {
@@ -93,12 +91,10 @@
     return out;
   }
 
-  const progressOf = (p) => ((p.transfers_in - p.transfers_out) / RISE_NET) * 100;
-
   // ---------- Deadline ----------
   function setupDeadline() {
     const next = snap.events.find((e) => e.current && !e.finished) ?? snap.events.find((e) => e.next);
-    deadlineMs = next?.deadline_time ? Date.parse(next.deadline_time) : null;
+    const deadlineMs = next?.deadline_time ? Date.parse(next.deadline_time) : null;
     const pad = (n) => String(n).padStart(2, "0");
 
     const tick = () => {
@@ -123,14 +119,13 @@
     setInterval(tick, 1000);
   }
 
-  // ---------- Banner ----------
+  // ---------- Banner and tiles ----------
   function renderBanner() {
     $("gw-title").textContent = `Gameweek ${gw}`;
     $("gw-prev").disabled = gw <= 1;
     $("gw-next").disabled = gw >= (snap.events.length || 38);
   }
 
-  // ---------- Summary tiles ----------
   function renderTiles() {
     const xi = picks?.picks.filter((x) => x.position <= 11) ?? [];
     const used = picks?.entry_history?.event_transfers ?? 0;
@@ -142,7 +137,6 @@
     $("tile-cost").textContent = `${cost} pts`;
     $("tile-bank").textContent = bank === null ? "–" : `£${(bank / 10).toFixed(1)}m`;
 
-    // Expected points for this gameweek, from FPL's ep_this for the starting XI, with captaincy.
     const xpts = xi.reduce((s, pk) => {
       const p = byId.get(pk.element);
       return s + (p ? Number(p.ep_this ?? 0) * (pk.multiplier ?? 1) : 0);
@@ -150,104 +144,68 @@
     $("tile-xpts").textContent = xi.length ? xpts.toFixed(1) : "–";
   }
 
-  // ---------- Player cards in the pitch view (the squad, as before) ----------
-  function playerTile(pk, live) {
-    const p = byId.get(pk.element);
-    if (!p) return "";
-    const t = teamById.get(p.team);
-    const gk = p.element_type === 1;
-    const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
-    const badge = pk.is_captain
-      ? `<span class="mt-cap">C</span>`
-      : pk.is_vice_captain
-        ? `<span class="mt-cap is-v">V</span>`
-        : "";
-    const d = live.get(p.id);
-    const pts = d ? d.p : "–";
-    return `<div class="mt-pcard">
-      <div class="mt-pshirt">${img}${badge}</div>
-      <div class="mt-pname">${esc(p.web_name)}</div>
-      <div class="mt-ppts">${pts}</div>
-    </div>`;
-  }
-
-  function renderPitch() {
-    const live = window.FPL?.live?.() ?? new Map();
-    const xi = picks.picks.filter((x) => x.position <= 11);
-    const bench = picks.picks.filter((x) => x.position > 11);
-    const rows = [1, 2, 3, 4]
-      .map((type) => {
-        const list = xi.filter((pk) => byId.get(pk.element)?.element_type === type);
-        return list.length ? `<div class="mt-prow">${list.map((pk) => playerTile(pk, live)).join("")}</div>` : "";
-      })
-      .join("");
-    $("mt-view").innerHTML = `
-      <div class="mt-pitch">
-        <div class="mt-pitch-bg"></div>
-        <div class="mt-pitch-rows">${rows}</div>
-      </div>
-      <div class="mt-bench">
-        <div class="mt-prow">${bench.map((pk) => playerTile(pk, live)).join("")}</div>
-      </div>`;
-  }
-
-  // ---------- List view: a grid with fixtures for the next gameweeks ----------
-  function fixtureGrid() {
-    const teamFixtures = new Map(); // "team:gw" -> [{ label, diff, xpts }]
-    const lastGw = Math.min(snap.events.length || 38, gw + LIST_GWS - 1);
-    for (const f of snap.fixtures) {
-      if (f.gw === null || f.gw < gw || f.gw > lastGw) continue;
-      const add = (team, label, diff, xpts) => {
-        const k = `${team}:${f.gw}`;
-        if (!teamFixtures.has(k)) teamFixtures.set(k, []);
-        teamFixtures.get(k).push({ label, diff, xpts });
-      };
-      const sh = (id) => teamById.get(id)?.short ?? "";
-      add(f.home, `${sh(f.away)}`, f.home_difficulty, null);
-      add(f.away, `${sh(f.home)}`, f.away_difficulty, null);
-    }
-    return { teamFixtures, lastGw };
-  }
-
+  // ---------- List view: the squad with fixtures for the next gameweeks ----------
   function fdrClass(d) {
     return d <= 2 ? "fdr-e" : d === 3 ? "fdr-m" : d === 4 ? "fdr-h" : d >= 5 ? "fdr-x" : "fdr-b";
   }
 
+  function fixtureMap(lastGw) {
+    const map = new Map(); // "team:gw" -> [{ label, diff }]
+    const sh = (id) => teamById.get(id)?.short ?? "";
+    for (const f of snap.fixtures) {
+      if (f.gw === null || f.gw < gw || f.gw > lastGw) continue;
+      const add = (team, label, diff) => {
+        const k = `${team}:${f.gw}`;
+        if (!map.has(k)) map.set(k, []);
+        map.get(k).push({ label, diff });
+      };
+      add(f.home, sh(f.away), f.home_difficulty);
+      add(f.away, sh(f.home), f.away_difficulty);
+    }
+    return map;
+  }
+
   function renderList() {
+    if (!picks) {
+      $("mt-view").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
+      return;
+    }
+
     const live = window.FPL?.live?.() ?? new Map();
-    const { teamFixtures, lastGw } = fixtureGrid();
+    const lastGw = Math.min(snap.events.length || 38, gw + LIST_GWS - 1);
     const gws = [];
     for (let g = gw; g <= lastGw; g++) gws.push(g);
+    const fixtures = fixtureMap(lastGw);
 
-    const xi = picks.picks.filter((x) => x.position <= 11).map((pk) => ({ pk, bench: false }));
-    const bench = picks.picks.filter((x) => x.position > 11).map((pk) => ({ pk, bench: true }));
-    const all = [...xi, ...bench];
-
-    const head = `<tr>
-      <th class="mt-lname">Player</th>
-      <th class="n">Pts</th>
-      ${gws.map((g) => `<th class="mt-gwh">GW${g}</th>`).join("")}
-    </tr>`;
+    const all = [
+      ...picks.picks.filter((x) => x.position <= 11).map((pk) => ({ pk, isBench: false })),
+      ...picks.picks.filter((x) => x.position > 11).map((pk) => ({ pk, isBench: true })),
+    ];
 
     const rows = all
-      .map(({ pk, bench: isBench }) => {
+      .map(({ pk, isBench }) => {
         const p = byId.get(pk.element);
         if (!p) return "";
         const t = teamById.get(p.team);
         const gk = p.element_type === 1;
         const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
-        const badge = pk.is_captain ? `<span class="mt-cap-s">C</span>` : pk.is_vice_captain ? `<span class="mt-cap-s is-v">V</span>` : "";
+        const badge = pk.is_captain
+          ? `<span class="mt-cap-s">C</span>`
+          : pk.is_vice_captain
+            ? `<span class="mt-cap-s is-v">V</span>`
+            : "";
         const d = live.get(p.id);
         const pts = d ? d.p : "–";
         const cells = gws
           .map((g) => {
-            const list = teamFixtures.get(`${p.team}:${g}`) ?? [];
+            const list = fixtures.get(`${p.team}:${g}`) ?? [];
             if (!list.length) return `<td class="mt-fx"><span class="mt-blank">Blank</span></td>`;
             return `<td class="mt-fx">${list
               .map((x) => `<span class="mt-fxp ${fdrClass(x.diff)}">${esc(x.label)}</span>`)
               .join("")}</td>`;
           })
           .join("");
+
         return `<tr class="${isBench ? "is-bench" : ""}">
           <td class="mt-lname">
             <div class="mt-lplayer">${img}${badge}
@@ -264,22 +222,13 @@
       .join("");
 
     $("mt-view").innerHTML = `<div class="mt-list-wrap"><table class="mt-list">
-      <thead>${head}</thead>
+      <thead><tr>
+        <th class="mt-lname">Player</th>
+        <th class="n">Pts</th>
+        ${gws.map((g) => `<th class="mt-gwh">GW${g}</th>`).join("")}
+      </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
-  }
-
-  function renderView() {
-    $("view-pitch").classList.toggle("is-on", view === "pitch");
-    $("view-list").classList.toggle("is-on", view === "list");
-    $("view-pitch").setAttribute("aria-pressed", String(view === "pitch"));
-    $("view-list").setAttribute("aria-pressed", String(view === "list"));
-    if (!picks) {
-      $("mt-view").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
-      return;
-    }
-    if (view === "pitch") renderPitch();
-    else renderList();
   }
 
   // ---------- Side panel ----------
@@ -311,11 +260,11 @@
     } else if (side === "watch") {
       body.innerHTML = `<p class="mt-sempty">Your watchlist will appear here. Add players from the Prices page.</p>`;
     } else {
-      body.innerHTML = `<p class="mt-sempty">Gameweek summary is shown below the squad.</p>`;
+      body.innerHTML = `<p class="mt-sempty">The gameweek summary is shown below the squad.</p>`;
     }
   }
 
-  // ---------- Rank Gains (kept from before) ----------
+  // ---------- Rank Gains ----------
   function placesPerPoint(rows, myRank) {
     const list = (rows ?? []).filter((r) => r.rank && r.total !== undefined);
     if (list.length >= 2) {
@@ -384,7 +333,7 @@
     </div>`;
   }
 
-  // ---------- Gameweek summary (kept from before) ----------
+  // ---------- Gameweek summary ----------
   function summaryData() {
     const live = window.FPL?.live?.() ?? new Map();
     const xi = picks.picks.filter((x) => x.position <= 11);
@@ -481,7 +430,7 @@
       </div>`;
   }
 
-  // ---------- Popular transfers and threats (kept from before) ----------
+  // ---------- Popular transfers ----------
   function chip(p) {
     if (!p) return `<span class="pt-name">Unknown</span>`;
     const t = teamById.get(p.team);
@@ -515,6 +464,7 @@
       .join("");
   }
 
+  // ---------- Main threats ----------
   function threatRows() {
     if (!sample?.sampled) return null;
     const live = window.FPL?.live?.() ?? new Map();
@@ -606,14 +556,12 @@
 
   // ---------- Loading and drawing ----------
   async function loadGw(g) {
-    const auth = { headers: { Authorization: `Bearer ${session.token}` } };
     const [picksRes, mgrRes] = await Promise.all([
       api(`/picks/${session.entryId}/${g}`).catch(() => null),
       g === liveGw ? api(`/managers?ids=${session.entryId}`).catch(() => null) : Promise.resolve(null),
     ]);
     picks = picksRes;
     gross = mgrRes?.managers?.[0]?.gross ?? picksRes?.entry_history?.points ?? 0;
-    void auth;
   }
 
   async function loadAll() {
@@ -640,7 +588,7 @@
 
     renderBanner();
     renderTiles();
-    renderView();
+    renderList();
     renderSide();
     renderSummary();
     renderRankGains();
@@ -658,14 +606,6 @@
       gw = Math.min(snap.events.length || 38, gw + 1);
       await loadGw(gw);
       draw();
-    });
-    $("view-pitch").addEventListener("click", () => {
-      view = "pitch";
-      renderView();
-    });
-    $("view-list").addEventListener("click", () => {
-      view = "list";
-      renderView();
     });
     document.querySelectorAll("[data-side]").forEach((b) =>
       b.addEventListener("click", () => {
