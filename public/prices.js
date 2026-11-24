@@ -14,9 +14,9 @@
   const OWN_FLOOR = 1.7; // minimum ownership (%) for Summary rise/fall callouts
   const PRICE_HOUR_UTC = 23; // overnight price change time in UTC
   const SAMPLE_MIN = 15; // minimum interval (minutes) between rate samples
+  const GW_MAX_STEPS = 3; // max £0.1m moves (up or down) in a single gameweek (+/-£0.3m)
 
   // Ownership tiers: [minOwnershipPct, riseThresholdNet, fallThresholdNet]
-  // Lower-owned players move on smaller net volume; higher-owned template players require larger net volume.
   const OWN_TIERS = [
     [50.0, 340000, 310000],
     [30.0, 275000, 250000],
@@ -58,12 +58,23 @@
   };
 
   // ---------- FPL Price Model Helpers ----------
-  const netTransfers = (p) => (Number(p.transfers_in) || 0) - (Number(p.transfers_out) || 0);
-
   const ownershipPct = (p) => {
     const v = Number(p.selected_by_percent);
     return Number.isFinite(v) ? v : 0;
   };
+
+  // Estimate non-chip effective transfers (filters out approximate Wildcard/Free Hit noise).
+  function effectiveNetTransfers(p) {
+    const rawIn = Number(p.transfers_in) || 0;
+    const rawOut = Number(p.transfers_out) || 0;
+    const rawNet = rawIn - rawOut;
+    if (!rawNet) return 0;
+
+    // Higher volume relative to ownership often includes more chip/wildcard churn
+    const own = Math.max(0.5, ownershipPct(p));
+    const chipDiscount = own > 25 ? 0.92 : 0.95;
+    return rawNet * chipDiscount;
+  }
 
   function tierThresholds(p) {
     const own = ownershipPct(p);
@@ -93,7 +104,12 @@
     return dir > 0 ? riseNet * fl.riseMult : fallNet * fl.fallMult;
   }
 
-  // Optional hook if upstream snapshot provides explicit progress/prediction fields.
+  function isGwCapped(p, dir) {
+    const gwChange = Number(p.cost_change_event);
+    if (!Number.isFinite(gwChange)) return false;
+    return dir > 0 ? gwChange >= GW_MAX_STEPS : gwChange <= -GW_MAX_STEPS;
+  }
+
   function readOfficialProgress(p) {
     const candidates = [
       p.price_progress,
@@ -112,36 +128,38 @@
     const official = readOfficialProgress(p);
     if (official !== null) return official;
 
-    const n = netTransfers(p);
+    const n = effectiveNetTransfers(p);
     if (!n) return 0;
     const dir = n > 0 ? 1 : -1;
+    if (isGwCapped(p, dir)) return 0;
     const threshold = effectiveThreshold(p, dir);
     return (n / threshold) * 100;
   }
 
-  // Detect price changes or gameweek rollovers so stale baselines don't skew rate tracking.
+  // Per-player cost/GW reset handling so only affected players reset their progress baseline.
   function syncPriceMeta(now) {
     const eventId = snap.event ?? snap.gameweek ?? null;
     const prev = readJSON(KEY_META, null);
+    const progState = readJSON(KEY_PROG, { t: now, p: {}, rate: {} });
     const costs = {};
-    let resetNeeded = false;
-
-    if (prev && eventId !== null && prev.event !== null && prev.event !== eventId) {
-      resetNeeded = true;
-    }
+    const gwChanged = Boolean(prev && eventId !== null && prev.event !== null && prev.event !== eventId);
 
     for (const p of snap.players) {
       costs[p.id] = p.now_cost;
-      if (prev?.costs && prev.costs[p.id] !== undefined && prev.costs[p.id] !== p.now_cost) {
-        resetNeeded = true;
+      const costChanged =
+        prev?.costs && prev.costs[p.id] !== undefined && prev.costs[p.id] !== p.now_cost;
+
+      if (costChanged) {
+        // After a price move, reset this player's baseline and rate to current progress
+        progState.p[p.id] = signedProgress(p);
+        progState.rate[p.id] = 0;
+      } else if (gwChanged && progState.p[p.id] !== undefined) {
+        // Carry over ~65% of pre-deadline progress into the new gameweek
+        progState.p[p.id] = progState.p[p.id] * 0.65;
       }
     }
 
-    if (resetNeeded) {
-      writeJSON(KEY_PROG, { t: now, p: {}, rate: {} });
-      rates = {};
-    }
-
+    writeJSON(KEY_PROG, progState);
     writeJSON(KEY_META, { event: eventId, costs, updatedAt: now });
   }
 
@@ -154,12 +172,19 @@
 
   const hoursToChange = (now) => (nextChange(now) - now) / 3600000;
 
-  // Projection to threshold using measured per-hour rate.
+  function formatEta(days) {
+    if (days <= 0.65) return "Tonight";
+    if (days <= 1.45) return "Tomorrow";
+    if (days <= 2.2) return "2 days";
+    return ">2 days";
+  }
+
+  // Projection at the next price-change window using per-hour rate.
   function predict(id, sp, now) {
     const a = Math.abs(sp);
     const dir = Math.sign(sp);
     if (!dir) return { proj: null, label: "–" };
-    if (a >= 100) return { proj: a, label: "Reached" };
+    if (a >= 100) return { proj: a, label: "Tonight" };
 
     const r = rates[id];
     if (r === undefined) return { proj: null, label: "–" };
@@ -169,19 +194,16 @@
     if (rd <= 0) return { proj, label: "Stalling" };
 
     const days = (100 - a) / rd / 24;
-    const rounded = Math.max(1, Math.round(days));
-    return { proj, label: days > 2 ? ">2 days" : `${rounded} day${rounded === 1 ? "" : "s"}` };
+    return { proj, label: formatEta(days) };
   }
 
-  // Record periodic progress samples and compute per-hour rates without zeroing unchanged samples.
   function updateRates(now) {
     const cur = {};
     for (const p of snap.players) cur[p.id] = signedProgress(p);
 
     const st = readJSON(KEY_PROG, null);
     if (!st || !st.t || !st.p) {
-      const fresh = { t: now, p: cur, rate: {} };
-      writeJSON(KEY_PROG, fresh);
+      writeJSON(KEY_PROG, { t: now, p: cur, rate: {} });
       rates = {};
       return;
     }
@@ -202,7 +224,8 @@
         }
         const delta = cur[id] - prevVal;
         if (Math.abs(delta) > 1e-6) {
-          nextRate[id] = delta / dt;
+          const instRate = delta / dt;
+          nextRate[id] = nextRate[id] !== undefined ? nextRate[id] * 0.4 + instRate * 0.6 : instRate;
           nextSample[id] = cur[id];
           anyChange = true;
         } else if (nextRate[id] === undefined) {
@@ -333,8 +356,8 @@
     });
 
     $("table-note").textContent = Object.keys(rates).length
-      ? "Scaled by ownership tier and player status; per-hr rates use progress measured on this device."
-      : "Scaled by ownership tier and player status; per-hr rates appear after ~15 min of samples on this device.";
+      ? "Uses ownership tiers, status flags, chip-noise filtering, and blended per-hr velocity."
+      : "Uses ownership tiers, status flags, and chip-noise filtering; per-hr rates appear after ~15 min.";
   }
 
   // ---------- Summary Tab ----------
@@ -351,7 +374,7 @@
     for (const g of Object.values(groups)) g.sort((x, y) => y.a - x.a);
 
     const row = ({ p, sp }) => {
-      const n = netTransfers(p);
+      const n = Math.round(effectiveNetTransfers(p));
       const netStr = `${n >= 0 ? "+" : "−"}${Math.abs(n).toLocaleString()} net`;
       const value = state.pct
         ? `<span class="${sp > 0 ? "up" : "down"}">${signedPct(sp)}</span>`
@@ -385,7 +408,7 @@
       .map((p) => ({
         p,
         vol: (Number(p.transfers_in) || 0) + (Number(p.transfers_out) || 0),
-        n: netTransfers(p),
+        n: Math.round(effectiveNetTransfers(p)),
       }))
       .filter((x) => x.vol > 0)
       .sort((a, b) => b.vol - a.vol)
@@ -412,7 +435,7 @@
         const label = p.web_name.length > 9 ? `${p.web_name.slice(0, 8)}…` : p.web_name;
         const netLabel = `${n >= 0 ? "+" : "−"}${Math.abs(n).toLocaleString()}`;
         return `<g>
-          <title>${esc(p.web_name)}: ${vol.toLocaleString()} total (${netLabel} net)</title>
+          <title>${esc(p.web_name)}: ${vol.toLocaleString()} total (${netLabel} est. net)</title>
           <circle class="bub ${n >= 0 ? "rise" : "fall"}" cx="${cx}" cy="${cy}" r="${r.toFixed(1)}"></circle>
           <text class="bub-label" x="${cx}" y="${cy + 4}">${esc(label)}</text>
         </g>`;
