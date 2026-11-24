@@ -1,6 +1,6 @@
-/* my-team.js: My team. Banner, deadline, the squad in a Fixtures view and a Points view, side filters,
+/* my-team.js: My team. Banner, deadline, the squad in a Fixtures view and a List view, side filters,
    summary tiles, and the Rank Gains, Popular transfers, Threats and gameweek summary cards.
-   Page key: team-view. Loads after app.js and team-view.js. */
+   The List view has a dropdown; each option sets its own columns. Page key: team-view. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
@@ -24,7 +24,7 @@
     ["bench", "In Your Bench"],
   ];
 
-  const POINTS_SORTS = [
+  const LIST_OPTIONS = [
     ["points", "Points"],
     ["price", "Current Price"],
     ["form", "Form"],
@@ -34,20 +34,49 @@
 
   const POS_TITLE = { 1: "Goalkeeper", 2: "Defenders", 3: "Midfielders", 4: "Forwards" };
 
-  // [column label, full name, key in the gameweek stats]
-  const COLS = [
-    ["Pts", "Points", "pts"],
-    ["MP", "Minutes played", "minutes"],
-    ["GS", "Goals scored", "gs"],
-    ["A", "Assists", "a"],
-    ["CS", "Clean sheets", "cs"],
-    ["GC", "Goals conceded", "gc"],
-    ["OG", "Own goals", "og"],
-    ["PS", "Penalties saved", "ps"],
-    ["PM", "Penalties missed", "pm"],
-    ["YC", "Yellow cards", "yc"],
-    ["RC", "Red cards", "rc"],
-  ];
+  // Columns for each dropdown option. "key" reads a value from the row, "fmt" formats it.
+  const COLS = {
+    points: [
+      { label: "Pts", full: "Points", key: "pts", cls: "lp-pts" },
+      { label: "MP", full: "Minutes played", key: "minutes" },
+      { label: "GS", full: "Goals scored", key: "gs" },
+      { label: "A", full: "Assists", key: "a" },
+      { label: "CS", full: "Clean sheets", key: "cs" },
+      { label: "GC", full: "Goals conceded", key: "gc" },
+      { label: "OG", full: "Own goals", key: "og" },
+      { label: "PS", full: "Penalties saved", key: "ps" },
+      { label: "PM", full: "Penalties missed", key: "pm" },
+      { label: "YC", full: "Yellow cards", key: "yc" },
+      { label: "RC", full: "Red cards", key: "rc" },
+    ],
+    price: [
+      { label: "CP", full: "Current price", key: "price" },
+      { label: "PP", full: "Predicted price", key: "dash" },
+      { label: "SP", full: "Selling price", key: "dash" },
+      { label: "F", full: "Form", key: "form" },
+      { label: "TP", full: "Total points", key: "total" },
+      { label: "Fix", full: "Next fixture", key: "fix" },
+    ],
+    form: [
+      { label: "F", full: "Form", key: "form" },
+      { label: "GWP", full: "Gameweek points", key: "pts" },
+      { label: "TP", full: "Total points", key: "total" },
+      { label: "Fix", full: "Next fixture", key: "fix" },
+    ],
+    own: [
+      { label: "Own", full: "Ownership", key: "own" },
+      { label: "Trend", full: "Ownership trend", key: "trend" },
+      { label: "OP", full: "Overall points", key: "total" },
+      { label: "Fix", full: "Next fixture", key: "fix" },
+    ],
+    change: [
+      { label: "Progress", full: "Progress towards price change", key: "progress" },
+      { label: "Predicted", full: "Predicted progress", key: "predicted" },
+      { label: "Status", full: "Status", key: "status" },
+      { label: "Trend", full: "Ownership trend", key: "trend" },
+      { label: "CP", full: "Current price", key: "price" },
+    ],
+  };
 
   let snap = null;
   let session = null;
@@ -63,10 +92,10 @@
   let threatFilter = "all";
   let threatShown = PAGE;
   let side = "players";
-  let view = "fixtures";      // "fixtures" or "points"
-  let ptsSort = "points";     // sort key for the Points view
-  let ptsMenuOpen = false;
-  let ptsHelpOpen = false;
+  let view = "fixtures";      // "fixtures" or "list"
+  let listSort = "points";    // dropdown option for the List view
+  let listMenuOpen = false;
+  let listHelpOpen = false;
   const gwStatsCache = new Map();   // gameweek -> { map: Map(playerId -> stats), error: bool }
   const gwStatsPending = new Map(); // gameweek -> promise while loading
   const filters = { own: 100, price: 16, pos: 0, club: 0, sort: "default", name: "" };
@@ -106,6 +135,7 @@
   const fmt = (n) => (n === null || n === undefined ? "–" : Number(n).toLocaleString());
   const progressOf = (p) => ((p.transfers_in - p.transfers_out) / RISE_NET) * 100;
   const priceLabel = (v) => `${Number(v).toFixed(1).replace(/\.0$/, "")}m`;
+  const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
 
   // ---------- Club state for a gameweek ----------
   function clubStates(g) {
@@ -320,7 +350,7 @@
     </table></div>`;
   }
 
-  // ---------- Points view ----------
+  // ---------- List view ----------
   function loadGwStats(g) {
     if (gwStatsCache.has(g)) return Promise.resolve();
     if (!gwStatsPending.has(g)) {
@@ -333,21 +363,79 @@
     return gwStatsPending.get(g);
   }
 
-  // Sort within a position group. Ties fall back to name.
-  function sortPointsRows(rows, key, stats) {
-    const sorters = {
-      points: (a, b) => (stats.get(b.p.id)?.pts ?? -1) - (stats.get(a.p.id)?.pts ?? -1),
-      price: (a, b) => b.p.now_cost - a.p.now_cost,
-      form: (a, b) => b.p.form - a.p.form,
-      own: (a, b) => b.p.selected_by_percent - a.p.selected_by_percent,
-      change: (a, b) => b.p.cost_change_window - a.p.cost_change_window,
-    };
-    const cmp = sorters[key] ?? sorters.points;
-    rows.sort((a, b) => cmp(a, b) || a.p.web_name.localeCompare(b.p.web_name));
+  // Price change status, using the same thresholds as the Prices page.
+  function statusOf(progressPct) {
+    const a = Math.abs(progressPct);
+    if (a >= 95) return "Likely to change";
+    if (a >= 80) return "Possible";
+    return "Unlikely to change";
+  }
+
+  // The value shown in one column for one player, for the chosen dropdown option.
+  function cellValue(col, p, s, pk) {
+    const key = col.key;
+    if (key === "dash") return "–";
+    if (key === "price") return money(p.now_cost);
+    if (key === "form") return Number(p.form).toFixed(1);
+    if (key === "total") return fmt(p.total_points);
+    if (key === "own") return `${Number(p.selected_by_percent).toFixed(1)}%`;
+    if (key === "trend") {
+      const n = p.transfers_in - p.transfers_out;
+      if (!n) return `<span class="lp-trend is-flat">–</span>`;
+      return n > 0
+        ? `<span class="lp-trend is-up">▲ Up</span>`
+        : `<span class="lp-trend is-down">▼ Down</span>`;
+    }
+    if (key === "progress") {
+      const v = progressOf(p);
+      return `<span class="lp-pill ${v >= 0 ? "is-up" : "is-down"}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+    }
+    if (key === "predicted") {
+      const v = progressOf(p);
+      return `<span class="lp-pill ${v >= 0 ? "is-up" : "is-down"}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+    }
+    if (key === "status") {
+      return `<span class="lp-status">${statusOf(progressOf(p))}</span>`;
+    }
+    if (key === "fix") {
+      const list = fixtureUpcoming(p.team);
+      return list.length ? esc(list[0]) : "–";
+    }
+    if (key === "pts") {
+      if (!s) return "–";
+      return s.pts;
+    }
+    if (key === "minutes" || key === "gs" || key === "a" || key === "cs" || key === "gc" ||
+        key === "og" || key === "ps" || key === "pm" || key === "yc" || key === "rc") {
+      return s ? s[key] : "–";
+    }
+    return "–";
+  }
+
+  // Next fixture for a club, as a short label such as "ARS (H)".
+  function fixtureUpcoming(teamId) {
+    const sh = (id) => teamById.get(id)?.short ?? "";
+    const next = snap.fixtures
+      .filter((f) => !f.finished && (f.home === teamId || f.away === teamId))
+      .sort((a, b) => (a.kickoff ?? "").localeCompare(b.kickoff ?? ""))[0];
+    if (!next) return [];
+    return next.home === teamId ? [`${sh(next.away)} (H)`] : [`${sh(next.home)} (A)`];
+  }
+
+  // Sort within a position group, for the chosen dropdown option. Ties fall back to name.
+  function sortListRows(rows, option, stats) {
+    const val = {
+      points: (r) => stats.get(r.p.id)?.pts ?? -1,
+      price: (r) => r.p.now_cost,
+      form: (r) => Number(r.p.form),
+      own: (r) => r.p.selected_by_percent,
+      change: (r) => r.p.cost_change_window,
+    }[option] ?? (() => 0);
+    rows.sort((a, b) => val(b) - val(a) || a.p.web_name.localeCompare(b.p.web_name));
     return rows;
   }
 
-  function pointsNameCell(pk, p) {
+  function nameCell(pk, p) {
     const t = teamById.get(p.team);
     const gk = p.element_type === 1;
     const img = t?.code
@@ -368,51 +456,50 @@
     </div></div>`;
   }
 
-  function renderPoints() {
+  function renderList() {
     if (!picks) {
       $("mt-view").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
       return;
     }
 
+    const cols = COLS[listSort] ?? COLS.points;
+    const needsStats = listSort === "points" || listSort === "form" || listSort === "change";
     const entry = gwStatsCache.get(gw);
-    if (!entry) {
+
+    // Stats are needed for the Points view and for the gameweek points column.
+    if (!entry && (listSort === "points" || cols.some((c) => c.key === "pts"))) {
       $("mt-view").innerHTML = `<p class="mt-empty">Loading stats…</p>`;
       loadGwStats(gw).then(() => {
-        if (view === "points") renderView();
+        if (view === "list") renderView();
       });
       return;
     }
-    if (entry.error) {
+    if (entry?.error && listSort === "points") {
       $("mt-view").innerHTML = `<p class="mt-empty">Stats for gameweek ${gw} are not available yet.</p>`;
       return;
     }
 
-    const stats = entry.map;
+    const stats = entry?.map ?? new Map();
     const rows = squadRows();
-    const span = COLS.length + 1;
+    const span = cols.length + 1;
 
     const head = `<tr>
       <th class="lp-name-h">Player</th>
-      ${COLS.map(([label, full]) => `<th class="n"><abbr title="${full}">${label}</abbr></th>`).join("")}
+      ${cols.map((c) => `<th class="n"><abbr title="${c.full}">${c.label}</abbr></th>`).join("")}
     </tr>`;
 
     let body = "";
     for (const type of [1, 2, 3, 4]) {
-      const group = sortPointsRows(
-        rows.filter((r) => r.p.element_type === type),
-        ptsSort,
-        stats,
-      );
+      const group = sortListRows(rows.filter((r) => r.p.element_type === type), listSort, stats);
       if (!group.length) continue;
       body += `<tr class="lp-group"><th colspan="${span}">${POS_TITLE[type]}</th></tr>`;
       body += group
         .map(({ pk, p }) => {
           const s = stats.get(p.id);
-          const cells = COLS.map(([, , key]) => {
-            const v = s ? s[key] : "–";
-            return `<td class="n${key === "pts" ? " lp-pts" : ""}">${v}</td>`;
-          }).join("");
-          return `<tr><td class="lp-name">${pointsNameCell(pk, p)}</td>${cells}</tr>`;
+          const cells = cols
+            .map((c) => `<td class="n${c.cls ? " " + c.cls : ""}">${cellValue(c, p, s, pk)}</td>`)
+            .join("");
+          return `<tr><td class="lp-name">${nameCell(pk, p)}</td>${cells}</tr>`;
         })
         .join("");
     }
@@ -426,34 +513,34 @@
   }
 
   // ---------- View switch and dropdown ----------
-  function renderPtsControls() {
-    const isPts = view === "points";
-    $("view-fx").classList.toggle("is-on", !isPts);
-    $("view-pts").classList.toggle("is-on", isPts);
-    $("view-fx").setAttribute("aria-pressed", String(!isPts));
-    $("view-pts").setAttribute("aria-pressed", String(isPts));
+  function renderListControls() {
+    const isList = view === "list";
+    $("view-fx").classList.toggle("is-on", !isList);
+    $("view-pts").classList.toggle("is-on", isList);
+    $("view-fx").setAttribute("aria-pressed", String(!isList));
+    $("view-pts").setAttribute("aria-pressed", String(isList));
 
-    $("pts-dd").hidden = !isPts;
-    $("pts-help-btn").hidden = !isPts;
-    $("pts-help-btn").setAttribute("aria-expanded", String(ptsHelpOpen));
-    $("pts-help-text").hidden = !isPts || !ptsHelpOpen;
+    $("pts-dd").hidden = !isList;
+    $("pts-help-btn").hidden = !isList;
+    $("pts-help-btn").setAttribute("aria-expanded", String(listHelpOpen));
+    $("pts-help-text").hidden = !isList || !listHelpOpen;
 
-    const label = POINTS_SORTS.find(([k]) => k === ptsSort)?.[1] ?? "Points";
+    const label = LIST_OPTIONS.find(([k]) => k === listSort)?.[1] ?? "Points";
     const btn = $("pts-dd-btn");
-    btn.innerHTML = `${esc(label)} <span aria-hidden="true">${ptsMenuOpen ? "▴" : "▾"}</span>`;
-    btn.setAttribute("aria-expanded", String(ptsMenuOpen));
+    btn.innerHTML = `${esc(label)} <span aria-hidden="true">${listMenuOpen ? "▴" : "▾"}</span>`;
+    btn.setAttribute("aria-expanded", String(listMenuOpen));
 
     const menu = $("pts-dd-menu");
-    menu.hidden = !ptsMenuOpen;
-    menu.innerHTML = POINTS_SORTS.map(
+    menu.hidden = !listMenuOpen;
+    menu.innerHTML = LIST_OPTIONS.map(
       ([k, l]) =>
-        `<button type="button" class="lp-opt${k === ptsSort ? " is-on" : ""}" role="option" aria-selected="${k === ptsSort}" data-sort="${k}">${esc(l)}</button>`,
+        `<button type="button" class="lp-opt${k === listSort ? " is-on" : ""}" role="option" aria-selected="${k === listSort}" data-sort="${k}">${esc(l)}</button>`,
     ).join("");
   }
 
   function renderView() {
-    renderPtsControls();
-    if (view === "points") renderPoints();
+    renderListControls();
+    if (view === "list") renderList();
     else renderFixtures();
   }
 
@@ -787,187 +874,4 @@
     return `<tr>
       <td class="th-namecol"><div class="th-name">${img}<div>
         <div class="th-pname">${esc(r.p.web_name)}</div>
-        <div class="th-sub">${esc(t?.short ?? "")} • ${esc(posById.get(r.p.element_type) ?? "")}</div>
-      </div></div></td>
-      <td class="n down">${r.delta.toFixed(1)}%</td>
-      <td class="n">${r.pts === null ? "–" : r.pts}</td>
-      <td class="n">${r.lost === null ? "–" : r.lost.toFixed(1)}</td>
-      <td class="n"><span class="${up ? "up" : "down"}">${Math.abs(r.progress).toFixed(1)}% ${up ? "↑" : "↓"}</span></td>
-    </tr>`;
-  }
-
-  function renderThreats() {
-    const pills = $("th-pills");
-    if (!pills) return;
-    pills.innerHTML = PILLS.map(
-      ([key, label]) =>
-        `<button type="button" class="th-pill${threatFilter === key ? " is-on" : ""}" data-filter="${key}" aria-pressed="${threatFilter === key}"><span class="th-dot" aria-hidden="true"></span>${label}</button>`,
-    ).join("");
-
-    const all = threatRows();
-    if (all === null) {
-      set("th-note", "Threats appear once the top 10k sample has data.");
-      $("th-head").innerHTML = "";
-      $("th-body").innerHTML = "";
-      $("th-more").hidden = true;
-      return;
-    }
-    set("th-note", "");
-    $("th-head").innerHTML = `<tr>
-      <th class="th-namecol">Player</th>
-      <th class="n">EO Δ</th>
-      <th class="n">Score</th>
-      <th class="n">Pts Lost</th>
-      <th class="n">Progress towards price rise/fall</th>
-    </tr>`;
-    const list = all.filter(matchesFilter);
-    const shown = list.slice(0, threatShown);
-    $("th-body").innerHTML = shown.length ? shown.map(threatLine).join("") : `<tr><td colspan="5">No players match.</td></tr>`;
-    const btn = $("th-more");
-    btn.hidden = list.length <= threatShown;
-    btn.textContent = `Show more (${Math.max(0, list.length - threatShown)} left)`;
-  }
-
-  // ---------- Loading and drawing ----------
-  async function loadGw(g) {
-    picks = await api(`/picks/${session.entryId}/${g}`).catch(() => null);
-  }
-
-  async function loadAll() {
-    const auth = { headers: { Authorization: `Bearer ${session.token}` } };
-    const [meRes, sampleRes, aroundRes] = await Promise.all([
-      api("/me", auth),
-      api("/sample").catch(() => null),
-      api(`/around/${session.entryId}`).catch(() => null),
-    ]);
-    me = meRes.entry;
-    sample = sampleRes;
-    around = aroundRes;
-    await loadGw(gw);
-    draw();
-  }
-
-  function draw() {
-    const e = me;
-    set(
-      "team-meta",
-      `${e.name} · ${e.player_first_name} ${e.player_last_name} · ${e.summary_overall_points} pts · rank ${
-        e.summary_overall_rank ? Number(e.summary_overall_rank).toLocaleString() : "–"
-      }`,
-    );
-    set("team-note", gw !== liveGw ? "Viewing a past or upcoming gameweek." : "");
-
-    fillClubs();
-    renderBanner();
-    renderTiles();
-    renderView();
-    renderSide();
-    renderSummary();
-    renderRankGains();
-    renderPopular();
-    renderThreats();
-  }
-
-  function wireControls() {
-    $("gw-prev").addEventListener("click", async () => {
-      gw = Math.max(1, gw - 1);
-      await loadGw(gw);
-      draw();
-    });
-    $("gw-next").addEventListener("click", async () => {
-      gw = Math.min(snap.events.length || 38, gw + 1);
-      await loadGw(gw);
-      draw();
-    });
-
-    $("view-fx").addEventListener("click", () => {
-      view = "fixtures";
-      ptsMenuOpen = false;
-      renderView();
-    });
-    $("view-pts").addEventListener("click", () => {
-      view = "points";
-      renderView();
-    });
-
-    $("pts-dd-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      ptsMenuOpen = !ptsMenuOpen;
-      renderPtsControls();
-    });
-    $("pts-dd-menu").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-sort]");
-      if (!b) return;
-      ptsSort = b.dataset.sort;
-      ptsMenuOpen = false;
-      renderView();
-    });
-    document.addEventListener("click", (e) => {
-      if (ptsMenuOpen && !$("pts-dd").contains(e.target)) {
-        ptsMenuOpen = false;
-        renderPtsControls();
-      }
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && ptsMenuOpen) {
-        ptsMenuOpen = false;
-        renderPtsControls();
-      }
-    });
-
-    $("pts-help-btn").addEventListener("click", () => {
-      ptsHelpOpen = !ptsHelpOpen;
-      renderPtsControls();
-    });
-
-    $("th-pills").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-filter]");
-      if (!b) return;
-      threatFilter = b.dataset.filter;
-      threatShown = PAGE;
-      renderThreats();
-    });
-    $("th-more").addEventListener("click", () => {
-      threatShown += PAGE;
-      renderThreats();
-    });
-  }
-
-  async function init() {
-    setNavCurrent();
-    session = readSession();
-    if (!session) return location.assign("/login");
-
-    wireControls();
-    wireSide();
-    setupDeadline();
-
-    try {
-      await loadAll();
-      document.addEventListener("fpl:live", () => {
-        if (me) draw();
-      });
-    } catch (err) {
-      if (err.status === 401) return signOutToLogin();
-      set("team-note", `Could not load your team. ${esc(err.message)}`);
-    }
-  }
-
-  readyP.then((s) => {
-    snap = s;
-    if (!snap) {
-      set("team-note", "Could not load data. Try again shortly.");
-      return;
-    }
-    liveGw = (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
-    gw = liveGw;
-    byId = new Map(snap.players.map((p) => [p.id, p]));
-    teamById = new Map(snap.teams.map((t) => [t.id, t]));
-    posById = new Map(snap.positions.map((p) => [p.id, p.short]));
-
-    const pos = $("f-pos");
-    if (pos) snap.positions.forEach((p) => pos.append(new Option(p.short, String(p.id))));
-
-    init();
-  });
-})();
+        <div class="th-sub">${esc(t?.short ?? "")} • ${esc(posById.get(r.p.element_type)
