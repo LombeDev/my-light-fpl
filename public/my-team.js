@@ -1,5 +1,5 @@
-/* my-team.js: My team in the fpl.team style. Banner, deadline, squad grid with fixtures and xPts,
-   side filters, summary tiles, and the Rank Gains, Popular transfers, Threats and gameweek summary cards.
+/* my-team.js: My team. Banner, deadline, the squad in a Fixtures view and a Points view, side filters,
+   summary tiles, and the Rank Gains, Popular transfers, Threats and gameweek summary cards.
    Page key: team-view. Loads after app.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
@@ -24,6 +24,31 @@
     ["bench", "In Your Bench"],
   ];
 
+  const POINTS_SORTS = [
+    ["points", "Points"],
+    ["price", "Current Price"],
+    ["form", "Form"],
+    ["own", "Ownership"],
+    ["change", "Price Change"],
+  ];
+
+  const POS_TITLE = { 1: "Goalkeeper", 2: "Defenders", 3: "Midfielders", 4: "Forwards" };
+
+  // [column label, full name, key in the gameweek stats]
+  const COLS = [
+    ["Pts", "Points", "pts"],
+    ["MP", "Minutes played", "minutes"],
+    ["GS", "Goals scored", "gs"],
+    ["A", "Assists", "a"],
+    ["CS", "Clean sheets", "cs"],
+    ["GC", "Goals conceded", "gc"],
+    ["OG", "Own goals", "og"],
+    ["PS", "Penalties saved", "ps"],
+    ["PM", "Penalties missed", "pm"],
+    ["YC", "Yellow cards", "yc"],
+    ["RC", "Red cards", "rc"],
+  ];
+
   let snap = null;
   let session = null;
   let gw = 1;      // gameweek being viewed
@@ -38,6 +63,12 @@
   let threatFilter = "all";
   let threatShown = PAGE;
   let side = "players";
+  let view = "fixtures";      // "fixtures" or "points"
+  let ptsSort = "points";     // sort key for the Points view
+  let ptsMenuOpen = false;
+  let ptsHelpOpen = false;
+  const gwStatsCache = new Map();   // gameweek -> { map: Map(playerId -> stats), error: bool }
+  const gwStatsPending = new Map(); // gameweek -> promise while loading
   const filters = { own: 100, price: 16, pos: 0, club: 0, sort: "default", name: "" };
 
   const readyP = new Promise((resolve) =>
@@ -175,7 +206,23 @@
     set("tile-xpts", xi.length && gw === liveGw ? xpts.toFixed(1) : "–");
   }
 
-  // ---------- Squad grid: fixtures and xPts ----------
+  // ---------- Squad rows after the side filters (unsorted) ----------
+  function squadRows() {
+    const needle = filters.name.trim().toLowerCase();
+    return picks.picks
+      .map((pk) => ({ pk, p: byId.get(pk.element), isBench: pk.position > 11 }))
+      .filter((r) => r.p)
+      .filter(
+        ({ p }) =>
+          (!filters.pos || p.element_type === filters.pos) &&
+          (!filters.club || p.team === filters.club) &&
+          (!needle || p.web_name.toLowerCase().includes(needle)) &&
+          p.selected_by_percent <= filters.own &&
+          p.now_cost / 10 <= filters.price + 1e-9,
+      );
+  }
+
+  // ---------- Fixtures view ----------
   function fdrClass(d) {
     return d <= 2 ? "fdr-e" : d === 3 ? "fdr-m" : d === 4 ? "fdr-h" : d >= 5 ? "fdr-x" : "fdr-b";
   }
@@ -213,20 +260,11 @@
     return `<span class="xp ${xp < 2 ? "xp-low" : "xp-mid"}">${xp.toFixed(2)} xPts</span>`;
   }
 
-  // Squad rows after the side filters and sort.
-  function squadRows() {
-    const needle = filters.name.trim().toLowerCase();
-    const rows = picks.picks
-      .map((pk) => ({ pk, p: byId.get(pk.element), isBench: pk.position > 11 }))
-      .filter((r) => r.p)
-      .filter(
-        ({ p }) =>
-          (!filters.pos || p.element_type === filters.pos) &&
-          (!filters.club || p.team === filters.club) &&
-          (!needle || p.web_name.toLowerCase().includes(needle)) &&
-          p.selected_by_percent <= filters.own &&
-          p.now_cost / 10 <= filters.price + 1e-9,
-      );
+  function renderFixtures() {
+    const lastGw = Math.min(snap.events.length || 38, gw + LIST_GWS - 1);
+    const gws = [];
+    for (let g = gw; g <= lastGw; g++) gws.push(g);
+    const fixtures = fixtureMap(lastGw);
 
     const sorters = {
       points: (a, b) => b.p.total_points - a.p.total_points,
@@ -234,21 +272,8 @@
       form: (a, b) => b.p.form - a.p.form,
       own: (a, b) => b.p.selected_by_percent - a.p.selected_by_percent,
     };
-    if (sorters[filters.sort]) rows.sort(sorters[filters.sort]);
-    return rows;
-  }
-
-  function renderList() {
-    if (!picks) {
-      $("mt-view").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
-      return;
-    }
-
-    const lastGw = Math.min(snap.events.length || 38, gw + LIST_GWS - 1);
-    const gws = [];
-    for (let g = gw; g <= lastGw; g++) gws.push(g);
-    const fixtures = fixtureMap(lastGw);
     const rows = squadRows();
+    if (sorters[filters.sort]) rows.sort(sorters[filters.sort]);
 
     const body = rows.length
       ? rows
@@ -295,23 +320,141 @@
     </table></div>`;
   }
 
-  // Club choices come from the squad, so they change with the gameweek.
-  function fillClubs() {
-    const sel = $("f-club");
-    if (!sel) return;
-    const clubs = new Map();
-    for (const pk of picks?.picks ?? []) {
-      const p = byId.get(pk.element);
-      if (p) clubs.set(p.team, teamById.get(p.team)?.name ?? "");
+  // ---------- Points view ----------
+  function loadGwStats(g) {
+    if (gwStatsCache.has(g)) return Promise.resolve();
+    if (!gwStatsPending.has(g)) {
+      const p = api(`/gwstats/${g}`)
+        .then((d) => gwStatsCache.set(g, { map: new Map(d.elements.map((e) => [e.id, e])), error: false }))
+        .catch(() => gwStatsCache.set(g, { map: new Map(), error: true }))
+        .finally(() => gwStatsPending.delete(g));
+      gwStatsPending.set(g, p);
     }
-    sel.innerHTML =
-      `<option value="0">Select Club</option>` +
-      [...clubs.entries()]
-        .sort((a, b) => a[1].localeCompare(b[1]))
-        .map(([id, name]) => `<option value="${id}">${esc(name)}</option>`)
+    return gwStatsPending.get(g);
+  }
+
+  // Sort within a position group. Ties fall back to name.
+  function sortPointsRows(rows, key, stats) {
+    const sorters = {
+      points: (a, b) => (stats.get(b.p.id)?.pts ?? -1) - (stats.get(a.p.id)?.pts ?? -1),
+      price: (a, b) => b.p.now_cost - a.p.now_cost,
+      form: (a, b) => b.p.form - a.p.form,
+      own: (a, b) => b.p.selected_by_percent - a.p.selected_by_percent,
+      change: (a, b) => b.p.cost_change_window - a.p.cost_change_window,
+    };
+    const cmp = sorters[key] ?? sorters.points;
+    rows.sort((a, b) => cmp(a, b) || a.p.web_name.localeCompare(b.p.web_name));
+    return rows;
+  }
+
+  function pointsNameCell(pk, p) {
+    const t = teamById.get(p.team);
+    const gk = p.element_type === 1;
+    const img = t?.code
+      ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
+      : "";
+    const badge = pk.is_captain
+      ? `<span class="lp-cap">C</span>`
+      : pk.is_vice_captain
+        ? `<span class="lp-cap is-v">V</span>`
+        : "";
+    const flag =
+      p.status === "a"
+        ? `<span class="lp-info" aria-hidden="true">i</span>`
+        : `<span class="lp-warn" role="img" aria-label="Flagged" title="Flagged">⚠</span>`;
+    return `<div class="lp-player">${flag}${img}<div>
+      <div class="lp-pname">${esc(p.web_name)}${badge}</div>
+      <div class="lp-sub">${esc(t?.short ?? "")} • ${esc(posById.get(p.element_type) ?? "")}</div>
+    </div></div>`;
+  }
+
+  function renderPoints() {
+    if (!picks) {
+      $("mt-view").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
+      return;
+    }
+
+    const entry = gwStatsCache.get(gw);
+    if (!entry) {
+      $("mt-view").innerHTML = `<p class="mt-empty">Loading stats…</p>`;
+      loadGwStats(gw).then(() => {
+        if (view === "points") renderView();
+      });
+      return;
+    }
+    if (entry.error) {
+      $("mt-view").innerHTML = `<p class="mt-empty">Stats for gameweek ${gw} are not available yet.</p>`;
+      return;
+    }
+
+    const stats = entry.map;
+    const rows = squadRows();
+    const span = COLS.length + 1;
+
+    const head = `<tr>
+      <th class="lp-name-h">Player</th>
+      ${COLS.map(([label, full]) => `<th class="n"><abbr title="${full}">${label}</abbr></th>`).join("")}
+    </tr>`;
+
+    let body = "";
+    for (const type of [1, 2, 3, 4]) {
+      const group = sortPointsRows(
+        rows.filter((r) => r.p.element_type === type),
+        ptsSort,
+        stats,
+      );
+      if (!group.length) continue;
+      body += `<tr class="lp-group"><th colspan="${span}">${POS_TITLE[type]}</th></tr>`;
+      body += group
+        .map(({ pk, p }) => {
+          const s = stats.get(p.id);
+          const cells = COLS.map(([, , key]) => {
+            const v = s ? s[key] : "–";
+            return `<td class="n${key === "pts" ? " lp-pts" : ""}">${v}</td>`;
+          }).join("");
+          return `<tr><td class="lp-name">${pointsNameCell(pk, p)}</td>${cells}</tr>`;
+        })
         .join("");
-    sel.value = clubs.has(filters.club) ? String(filters.club) : "0";
-    filters.club = Number(sel.value);
+    }
+
+    if (!body) body = `<tr><td colspan="${span}" class="mt-empty">No players match these filters.</td></tr>`;
+
+    $("mt-view").innerHTML = `<div class="lp-wrap"><table class="lp-table">
+      <thead>${head}</thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
+  }
+
+  // ---------- View switch and dropdown ----------
+  function renderPtsControls() {
+    const isPts = view === "points";
+    $("view-fx").classList.toggle("is-on", !isPts);
+    $("view-pts").classList.toggle("is-on", isPts);
+    $("view-fx").setAttribute("aria-pressed", String(!isPts));
+    $("view-pts").setAttribute("aria-pressed", String(isPts));
+
+    $("pts-dd").hidden = !isPts;
+    $("pts-help-btn").hidden = !isPts;
+    $("pts-help-btn").setAttribute("aria-expanded", String(ptsHelpOpen));
+    $("pts-help-text").hidden = !isPts || !ptsHelpOpen;
+
+    const label = POINTS_SORTS.find(([k]) => k === ptsSort)?.[1] ?? "Points";
+    const btn = $("pts-dd-btn");
+    btn.innerHTML = `${esc(label)} <span aria-hidden="true">${ptsMenuOpen ? "▴" : "▾"}</span>`;
+    btn.setAttribute("aria-expanded", String(ptsMenuOpen));
+
+    const menu = $("pts-dd-menu");
+    menu.hidden = !ptsMenuOpen;
+    menu.innerHTML = POINTS_SORTS.map(
+      ([k, l]) =>
+        `<button type="button" class="lp-opt${k === ptsSort ? " is-on" : ""}" role="option" aria-selected="${k === ptsSort}" data-sort="${k}">${esc(l)}</button>`,
+    ).join("");
+  }
+
+  function renderView() {
+    renderPtsControls();
+    if (view === "points") renderPoints();
+    else renderFixtures();
   }
 
   // ---------- Side panel ----------
@@ -345,29 +488,48 @@
     $("own").addEventListener("input", (e) => {
       filters.own = Number(e.target.value);
       set("own-val", `${filters.own}%`);
-      renderList();
+      renderView();
     });
     $("price").addEventListener("input", (e) => {
       filters.price = Number(e.target.value);
       set("price-val", priceLabel(filters.price));
-      renderList();
+      renderView();
     });
     $("f-pos").addEventListener("change", (e) => {
       filters.pos = Number(e.target.value);
-      renderList();
+      renderView();
     });
     $("f-club").addEventListener("change", (e) => {
       filters.club = Number(e.target.value);
-      renderList();
+      renderView();
     });
     $("f-sort").addEventListener("change", (e) => {
       filters.sort = e.target.value;
-      renderList();
+      renderView();
     });
     $("f-name").addEventListener("input", (e) => {
       filters.name = e.target.value;
-      renderList();
+      renderView();
     });
+  }
+
+  // Club choices come from the squad, so they change with the gameweek.
+  function fillClubs() {
+    const sel = $("f-club");
+    if (!sel) return;
+    const clubs = new Map();
+    for (const pk of picks?.picks ?? []) {
+      const p = byId.get(pk.element);
+      if (p) clubs.set(p.team, teamById.get(p.team)?.name ?? "");
+    }
+    sel.innerHTML =
+      `<option value="0">Select Club</option>` +
+      [...clubs.entries()]
+        .sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([id, name]) => `<option value="${id}">${esc(name)}</option>`)
+        .join("");
+    sel.value = clubs.has(filters.club) ? String(filters.club) : "0";
+    filters.club = Number(sel.value);
   }
 
   // ---------- Rank Gains ----------
@@ -698,7 +860,7 @@
     fillClubs();
     renderBanner();
     renderTiles();
-    renderList();
+    renderView();
     renderSide();
     renderSummary();
     renderRankGains();
@@ -717,6 +879,47 @@
       await loadGw(gw);
       draw();
     });
+
+    $("view-fx").addEventListener("click", () => {
+      view = "fixtures";
+      ptsMenuOpen = false;
+      renderView();
+    });
+    $("view-pts").addEventListener("click", () => {
+      view = "points";
+      renderView();
+    });
+
+    $("pts-dd-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      ptsMenuOpen = !ptsMenuOpen;
+      renderPtsControls();
+    });
+    $("pts-dd-menu").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-sort]");
+      if (!b) return;
+      ptsSort = b.dataset.sort;
+      ptsMenuOpen = false;
+      renderView();
+    });
+    document.addEventListener("click", (e) => {
+      if (ptsMenuOpen && !$("pts-dd").contains(e.target)) {
+        ptsMenuOpen = false;
+        renderPtsControls();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && ptsMenuOpen) {
+        ptsMenuOpen = false;
+        renderPtsControls();
+      }
+    });
+
+    $("pts-help-btn").addEventListener("click", () => {
+      ptsHelpOpen = !ptsHelpOpen;
+      renderPtsControls();
+    });
+
     $("th-pills").addEventListener("click", (e) => {
       const b = e.target.closest("[data-filter]");
       if (!b) return;
