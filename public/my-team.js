@@ -4,7 +4,8 @@
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
-  const $ = (id) => document.getElementById(id);
+    // If a section is missing from the page, write to a hidden element instead of crashing.
+  const $ = (id) => document.getElementById(id) ?? document.createElement("div");
   const set = (id, text) => {
     const el = $(id);
     if (el) el.textContent = text;
