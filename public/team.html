@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>My team · FPL</title>
-  <meta name="description" content="Your Fantasy Premier League squad in pitch and list view, deadline, transfers and gameweek summary.">
+  <meta name="description" content="Your Fantasy Premier League squad, deadline, transfers and gameweek summary.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/team-view.js" defer></script>
@@ -41,15 +41,6 @@
           <div class="mt-tile"><div class="mt-tl">Bank</div><div class="mt-tv is-green" id="tile-bank">–</div></div>
           <div class="mt-tile"><div class="mt-tl">xPts</div><div class="mt-tv" id="tile-xpts">–</div></div>
         </div>
-
-        <div class="mt-toolbar">
-          <div class="mt-switch" role="group" aria-label="View">
-            <button type="button" id="view-pitch" class="is-on" aria-pressed="true">Pitch</button>
-            <button type="button" id="view-list" aria-pressed="false">List</button>
-          </div>
-        </div>
-
-        <div id="mt-view"></div>
 
         <p class="meta" id="team-note"></p>
 
@@ -95,6 +86,8 @@
         <div class="mt-sidebody" id="side-body"></div>
       </aside>
     </div>
+
+    <div id="mt-view"></div>
   </main>
 
   <footer>
