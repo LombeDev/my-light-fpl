@@ -4,8 +4,7 @@
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
-    // If a section is missing from the page, write to a hidden element instead of crashing.
-  const $ = (id) => document.getElementById(id) ?? document.createElement("div");
+  const $ = (id) => document.getElementById(id);
   const set = (id, text) => {
     const el = $(id);
     if (el) el.textContent = text;
@@ -98,22 +97,37 @@
   }
 
   // ---------- Deadline ----------
+  // Uses the gameweek's deadline from the snapshot. If that isn't there yet, uses the first kickoff
+  // of the gameweek, because FPL's deadline is always the first kickoff.
+  function deadlineMs(snapshot) {
+    const next = snapshot.events.find((e) => e.current && !e.finished) ?? snapshot.events.find((e) => e.next);
+    if (!next) return null;
+    if (next.deadline_time) {
+      const ms = Date.parse(next.deadline_time);
+      if (!Number.isNaN(ms)) return ms;
+    }
+    const kicks = snapshot.fixtures
+      .filter((f) => f.gw === next.id && f.kickoff)
+      .map((f) => Date.parse(f.kickoff))
+      .filter((ms) => !Number.isNaN(ms));
+    return kicks.length ? Math.min(...kicks) : null;
+  }
+
   function setupDeadline() {
-    const next = snap.events.find((e) => e.current && !e.finished) ?? snap.events.find((e) => e.next);
-    const deadlineMs = next?.deadline_time ? Date.parse(next.deadline_time) : null;
+    const target = deadlineMs(snap);
     const pad = (n) => String(n).padStart(2, "0");
 
     const tick = () => {
-      if (!deadlineMs) {
+      if (!target) {
         set("dl-label", "Deadline not available");
         return;
       }
-      const when = new Date(deadlineMs)
+      const when = new Date(target)
         .toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
         .replace(",", "");
       set("dl-label", `Deadline ${when}`);
 
-      const ms = deadlineMs - Date.now();
+      const ms = target - Date.now();
       if (ms <= 0) {
         ["dl-d", "dl-h", "dl-m", "dl-s"].forEach((id) => set(id, "00"));
         return;
@@ -371,6 +385,7 @@
 
   function renderRankGains() {
     const box = $("rg-body");
+    if (!box) return;
     if (!picks) {
       box.innerHTML = `<p class="rg-empty">Picks are not available yet.</p>`;
       return;
@@ -528,6 +543,7 @@
 
   function renderPopular() {
     const box = $("pop-body");
+    if (!box) return;
     if (!sample?.sampled) {
       box.innerHTML = `<p class="meta pt-empty">Popular transfers appear once the top 10k sample has data.</p>`;
       return;
@@ -613,7 +629,9 @@
   }
 
   function renderThreats() {
-    $("th-pills").innerHTML = PILLS.map(
+    const pills = $("th-pills");
+    if (!pills) return;
+    pills.innerHTML = PILLS.map(
       ([key, label]) =>
         `<button type="button" class="th-pill${threatFilter === key ? " is-on" : ""}" data-filter="${key}" aria-pressed="${threatFilter === key}"><span class="th-dot" aria-hidden="true"></span>${label}</button>`,
     ).join("");
