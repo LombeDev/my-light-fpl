@@ -1,6 +1,6 @@
 /* my-team.js: My team. Banner, deadline, the squad in a Fixtures view and a List view, side filters,
    summary tiles, and the Rank Gains, Popular transfers, Threats and gameweek summary cards.
-   The List view has a dropdown; each option sets its own columns. Page key: team-view. */
+   Each section runs on its own, so one failure does not stop the others. Page key: team-view. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
@@ -34,7 +34,7 @@
 
   const POS_TITLE = { 1: "Goalkeeper", 2: "Defenders", 3: "Midfielders", 4: "Forwards" };
 
-  // Columns for each dropdown option. "key" reads a value from the row, "fmt" formats it.
+  // Columns for each dropdown option. "key" reads a value from the row.
   const COLS = {
     points: [
       { label: "Pts", full: "Points", key: "pts", cls: "lp-pts" },
@@ -103,6 +103,17 @@
   const readyP = new Promise((resolve) =>
     document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
   );
+
+  // Runs one section of the page. If it fails, the error is logged and the note shows which section
+  // broke, and the rest of the page still loads.
+  function safe(name, fn) {
+    try {
+      fn();
+    } catch (err) {
+      console.error(`${name} failed:`, err);
+      set("team-note", `${name} could not load: ${err.message}`);
+    }
+  }
 
   async function api(path, options = {}) {
     const res = await fetch(`/api${path}`, options);
@@ -371,8 +382,18 @@
     return "Unlikely to change";
   }
 
-  // The value shown in one column for one player, for the chosen dropdown option.
-  function cellValue(col, p, s, pk) {
+  // Next fixture for a club, as a short label such as "ARS (H)".
+  function fixtureUpcoming(teamId) {
+    const sh = (id) => teamById.get(id)?.short ?? "";
+    const next = snap.fixtures
+      .filter((f) => !f.finished && (f.home === teamId || f.away === teamId))
+      .sort((a, b) => (a.kickoff ?? "").localeCompare(b.kickoff ?? ""))[0];
+    if (!next) return [];
+    return next.home === teamId ? [`${sh(next.away)} (H)`] : [`${sh(next.home)} (A)`];
+  }
+
+  // The value shown in one column for one player.
+  function cellValue(col, p, s) {
     const key = col.key;
     if (key === "dash") return "–";
     if (key === "price") return money(p.now_cost);
@@ -386,40 +407,20 @@
         ? `<span class="lp-trend is-up">▲ Up</span>`
         : `<span class="lp-trend is-down">▼ Down</span>`;
     }
-    if (key === "progress") {
+    if (key === "progress" || key === "predicted") {
       const v = progressOf(p);
       return `<span class="lp-pill ${v >= 0 ? "is-up" : "is-down"}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
     }
-    if (key === "predicted") {
-      const v = progressOf(p);
-      return `<span class="lp-pill ${v >= 0 ? "is-up" : "is-down"}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
-    }
-    if (key === "status") {
-      return `<span class="lp-status">${statusOf(progressOf(p))}</span>`;
-    }
+    if (key === "status") return `<span class="lp-status">${statusOf(progressOf(p))}</span>`;
     if (key === "fix") {
       const list = fixtureUpcoming(p.team);
       return list.length ? esc(list[0]) : "–";
     }
-    if (key === "pts") {
-      if (!s) return "–";
-      return s.pts;
-    }
-    if (key === "minutes" || key === "gs" || key === "a" || key === "cs" || key === "gc" ||
-        key === "og" || key === "ps" || key === "pm" || key === "yc" || key === "rc") {
+    if (key === "pts") return s ? s.pts : "–";
+    if (["minutes", "gs", "a", "cs", "gc", "og", "ps", "pm", "yc", "rc"].includes(key)) {
       return s ? s[key] : "–";
     }
     return "–";
-  }
-
-  // Next fixture for a club, as a short label such as "ARS (H)".
-  function fixtureUpcoming(teamId) {
-    const sh = (id) => teamById.get(id)?.short ?? "";
-    const next = snap.fixtures
-      .filter((f) => !f.finished && (f.home === teamId || f.away === teamId))
-      .sort((a, b) => (a.kickoff ?? "").localeCompare(b.kickoff ?? ""))[0];
-    if (!next) return [];
-    return next.home === teamId ? [`${sh(next.away)} (H)`] : [`${sh(next.home)} (A)`];
   }
 
   // Sort within a position group, for the chosen dropdown option. Ties fall back to name.
@@ -463,18 +464,18 @@
     }
 
     const cols = COLS[listSort] ?? COLS.points;
-    const needsStats = listSort === "points" || listSort === "form" || listSort === "change";
     const entry = gwStatsCache.get(gw);
+    const needsGwStats = cols.some((c) => c.key === "pts" || ["minutes", "gs", "a", "cs", "gc", "og", "ps", "pm", "yc", "rc"].includes(c.key));
 
-    // Stats are needed for the Points view and for the gameweek points column.
-    if (!entry && (listSort === "points" || cols.some((c) => c.key === "pts"))) {
+    // Gameweek stats are needed for the Points view and the GWP column. Load them, then draw again.
+    if (!entry && needsGwStats) {
       $("mt-view").innerHTML = `<p class="mt-empty">Loading stats…</p>`;
       loadGwStats(gw).then(() => {
         if (view === "list") renderView();
       });
       return;
     }
-    if (entry?.error && listSort === "points") {
+    if (entry?.error && needsGwStats) {
       $("mt-view").innerHTML = `<p class="mt-empty">Stats for gameweek ${gw} are not available yet.</p>`;
       return;
     }
@@ -497,7 +498,7 @@
         .map(({ pk, p }) => {
           const s = stats.get(p.id);
           const cells = cols
-            .map((c) => `<td class="n${c.cls ? " " + c.cls : ""}">${cellValue(c, p, s, pk)}</td>`)
+            .map((c) => `<td class="n${c.cls ? " " + c.cls : ""}">${cellValue(c, p, s)}</td>`)
             .join("");
           return `<tr><td class="lp-name">${nameCell(pk, p)}</td>${cells}</tr>`;
         })
@@ -874,4 +875,187 @@
     return `<tr>
       <td class="th-namecol"><div class="th-name">${img}<div>
         <div class="th-pname">${esc(r.p.web_name)}</div>
-        <div class="th-sub">${esc(t?.short ?? "")} • ${esc(posById.get(r.p.element_type)
+        <div class="th-sub">${esc(t?.short ?? "")} • ${esc(posById.get(r.p.element_type) ?? "")}</div>
+      </div></div></td>
+      <td class="n down">${r.delta.toFixed(1)}%</td>
+      <td class="n">${r.pts === null ? "–" : r.pts}</td>
+      <td class="n">${r.lost === null ? "–" : r.lost.toFixed(1)}</td>
+      <td class="n"><span class="${up ? "up" : "down"}">${Math.abs(r.progress).toFixed(1)}% ${up ? "↑" : "↓"}</span></td>
+    </tr>`;
+  }
+
+  function renderThreats() {
+    const pills = $("th-pills");
+    if (!pills) return;
+    pills.innerHTML = PILLS.map(
+      ([key, label]) =>
+        `<button type="button" class="th-pill${threatFilter === key ? " is-on" : ""}" data-filter="${key}" aria-pressed="${threatFilter === key}"><span class="th-dot" aria-hidden="true"></span>${label}</button>`,
+    ).join("");
+
+    const all = threatRows();
+    if (all === null) {
+      set("th-note", "Threats appear once the top 10k sample has data.");
+      $("th-head").innerHTML = "";
+      $("th-body").innerHTML = "";
+      $("th-more").hidden = true;
+      return;
+    }
+    set("th-note", "");
+    $("th-head").innerHTML = `<tr>
+      <th class="th-namecol">Player</th>
+      <th class="n">EO Δ</th>
+      <th class="n">Score</th>
+      <th class="n">Pts Lost</th>
+      <th class="n">Progress towards price rise/fall</th>
+    </tr>`;
+    const list = all.filter(matchesFilter);
+    const shown = list.slice(0, threatShown);
+    $("th-body").innerHTML = shown.length ? shown.map(threatLine).join("") : `<tr><td colspan="5">No players match.</td></tr>`;
+    const btn = $("th-more");
+    btn.hidden = list.length <= threatShown;
+    btn.textContent = `Show more (${Math.max(0, list.length - threatShown)} left)`;
+  }
+
+  // ---------- Loading and drawing ----------
+  async function loadGw(g) {
+    picks = await api(`/picks/${session.entryId}/${g}`).catch(() => null);
+  }
+
+  async function loadAll() {
+    const auth = { headers: { Authorization: `Bearer ${session.token}` } };
+    const [meRes, sampleRes, aroundRes] = await Promise.all([
+      api("/me", auth),
+      api("/sample").catch(() => null),
+      api(`/around/${session.entryId}`).catch(() => null),
+    ]);
+    me = meRes.entry;
+    sample = sampleRes;
+    around = aroundRes;
+    await loadGw(gw);
+    draw();
+  }
+
+  function draw() {
+    const e = me;
+    set(
+      "team-meta",
+      `${e.name} · ${e.player_first_name} ${e.player_last_name} · ${e.summary_overall_points} pts · rank ${
+        e.summary_overall_rank ? Number(e.summary_overall_rank).toLocaleString() : "–"
+      }`,
+    );
+    set("team-note", gw !== liveGw ? "Viewing a past or upcoming gameweek." : "");
+
+    safe("Club filter", fillClubs);
+    safe("Banner", renderBanner);
+    safe("Summary tiles", renderTiles);
+    safe("Squad", renderView);
+    safe("Side panel", renderSide);
+    safe("Gameweek summary", renderSummary);
+    safe("Rank gains", renderRankGains);
+    safe("Popular transfers", renderPopular);
+    safe("Main threats", renderThreats);
+  }
+
+  function wireControls() {
+    $("gw-prev").addEventListener("click", async () => {
+      gw = Math.max(1, gw - 1);
+      await loadGw(gw);
+      draw();
+    });
+    $("gw-next").addEventListener("click", async () => {
+      gw = Math.min(snap.events.length || 38, gw + 1);
+      await loadGw(gw);
+      draw();
+    });
+
+    $("view-fx").addEventListener("click", () => {
+      view = "fixtures";
+      listMenuOpen = false;
+      safe("Squad", renderView);
+    });
+    $("view-pts").addEventListener("click", () => {
+      view = "list";
+      safe("Squad", renderView);
+    });
+
+    $("pts-dd-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      listMenuOpen = !listMenuOpen;
+      safe("List options", renderListControls);
+    });
+    $("pts-dd-menu").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-sort]");
+      if (!b) return;
+      listSort = b.dataset.sort;
+      listMenuOpen = false;
+      safe("Squad", renderView);
+    });
+    document.addEventListener("click", (e) => {
+      if (listMenuOpen && !$("pts-dd").contains(e.target)) {
+        listMenuOpen = false;
+        safe("List options", renderListControls);
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && listMenuOpen) {
+        listMenuOpen = false;
+        safe("List options", renderListControls);
+      }
+    });
+
+    $("pts-help-btn").addEventListener("click", () => {
+      listHelpOpen = !listHelpOpen;
+      safe("List options", renderListControls);
+    });
+
+    $("th-pills").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-filter]");
+      if (!b) return;
+      threatFilter = b.dataset.filter;
+      threatShown = PAGE;
+      safe("Main threats", renderThreats);
+    });
+    $("th-more").addEventListener("click", () => {
+      threatShown += PAGE;
+      safe("Main threats", renderThreats);
+    });
+  }
+
+  async function init() {
+    setNavCurrent();
+    session = readSession();
+    if (!session) return location.assign("/login");
+
+    safe("Controls", wireControls);
+    safe("Side panel", wireSide);
+    safe("Deadline", setupDeadline);
+
+    try {
+      await loadAll();
+      document.addEventListener("fpl:live", () => {
+        if (me) draw();
+      });
+    } catch (err) {
+      if (err.status === 401) return signOutToLogin();
+      set("team-note", `Could not load your team. ${esc(err.message)}`);
+    }
+  }
+
+  readyP.then((s) => {
+    snap = s;
+    if (!snap) {
+      set("team-note", "Could not load data. Try again shortly.");
+      return;
+    }
+    liveGw = (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
+    gw = liveGw;
+    byId = new Map(snap.players.map((p) => [p.id, p]));
+    teamById = new Map(snap.teams.map((t) => [t.id, t]));
+    posById = new Map(snap.positions.map((p) => [p.id, p.short]));
+
+    const pos = $("f-pos");
+    if (pos) snap.positions.forEach((p) => pos.append(new Option(p.short, String(p.id))));
+
+    init();
+  });
+})();
