@@ -10,13 +10,12 @@
   const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
   const PAGE = 25;
 
-  // Calibration settings. Tune against observed overnight FPL price changes.
-  const OWN_FLOOR = 1.7; // minimum ownership (%) for Summary rise/fall callouts
-  const PRICE_HOUR_UTC = 23; // overnight price change time in UTC
-  const SAMPLE_MIN = 15; // minimum interval (minutes) between rate samples
-  const GW_MAX_STEPS = 3; // max £0.1m moves (up or down) in a single gameweek (+/-£0.3m)
+  // Fallback settings when upstream snapshot lacks explicit official progress fields.
+  const OWN_FLOOR = 1.7;
+  const PRICE_HOUR_UTC = 23; // overnight price change hour in UTC (01:00 CAT / 23:00 UTC)
+  const SAMPLE_MIN = 15; // matches 15-minute progress update cadence
+  const GW_MAX_STEPS = 3;
 
-  // Ownership tiers: [minOwnershipPct, riseThresholdNet, fallThresholdNet]
   const OWN_TIERS = [
     [50.0, 340000, 310000],
     [30.0, 275000, 250000],
@@ -57,20 +56,15 @@
     }
   };
 
-  // ---------- FPL Price Model Helpers ----------
+  // ---------- Official + Fallback Price Model ----------
   const ownershipPct = (p) => {
     const v = Number(p.selected_by_percent);
     return Number.isFinite(v) ? v : 0;
   };
 
-  // Estimate non-chip effective transfers (filters out approximate Wildcard/Free Hit noise).
   function effectiveNetTransfers(p) {
-    const rawIn = Number(p.transfers_in) || 0;
-    const rawOut = Number(p.transfers_out) || 0;
-    const rawNet = rawIn - rawOut;
+    const rawNet = (Number(p.transfers_in) || 0) - (Number(p.transfers_out) || 0);
     if (!rawNet) return 0;
-
-    // Higher volume relative to ownership often includes more chip/wildcard churn
     const own = Math.max(0.5, ownershipPct(p));
     const chipDiscount = own > 25 ? 0.92 : 0.95;
     return rawNet * chipDiscount;
@@ -110,20 +104,48 @@
     return dir > 0 ? gwChange >= GW_MAX_STEPS : gwChange <= -GW_MAX_STEPS;
   }
 
+  // Prefer official FPL progress fields when provided by app.js / snapshot.
   function readOfficialProgress(p) {
-    const candidates = [
+    const fields = [
       p.price_progress,
       p.change_progress,
       p.progress_pct,
       p.price_change_progress,
+      p.progress,
     ];
-    for (const val of candidates) {
+    for (const val of fields) {
+      if (typeof val === "number" && Number.isFinite(val)) return val;
+      if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) {
+        return Number(val);
+      }
+    }
+    return null;
+  }
+
+  function readOfficialPredictedProgress(p) {
+    const fields = [
+      p.predicted_progress,
+      p.price_predicted_progress,
+      p.projected_progress,
+    ];
+    for (const val of fields) {
+      if (typeof val === "number" && Number.isFinite(val)) return val;
+      if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) {
+        return Number(val);
+      }
+    }
+    return null;
+  }
+
+  function readOfficialRate(p) {
+    const fields = [p.rate_per_hour, p.hourly_progress, p.progress_per_hour];
+    for (const val of fields) {
       if (typeof val === "number" && Number.isFinite(val)) return val;
     }
     return null;
   }
 
-  // Positive = rising progress, negative = falling progress, +/-100 = threshold reached.
+  // Positive = rising progress, negative = falling progress.
   function signedProgress(p) {
     const official = readOfficialProgress(p);
     if (official !== null) return official;
@@ -132,11 +154,9 @@
     if (!n) return 0;
     const dir = n > 0 ? 1 : -1;
     if (isGwCapped(p, dir)) return 0;
-    const threshold = effectiveThreshold(p, dir);
-    return (n / threshold) * 100;
+    return (n / effectiveThreshold(p, dir)) * 100;
   }
 
-  // Per-player cost/GW reset handling so only affected players reset their progress baseline.
   function syncPriceMeta(now) {
     const eventId = snap.event ?? snap.gameweek ?? null;
     const prev = readJSON(KEY_META, null);
@@ -150,11 +170,9 @@
         prev?.costs && prev.costs[p.id] !== undefined && prev.costs[p.id] !== p.now_cost;
 
       if (costChanged) {
-        // After a price move, reset this player's baseline and rate to current progress
         progState.p[p.id] = signedProgress(p);
         progState.rate[p.id] = 0;
       } else if (gwChanged && progState.p[p.id] !== undefined) {
-        // Carry over ~65% of pre-deadline progress into the new gameweek
         progState.p[p.id] = progState.p[p.id] * 0.65;
       }
     }
@@ -163,7 +181,6 @@
     writeJSON(KEY_META, { event: eventId, costs, updatedAt: now });
   }
 
-  // Next overnight price change as a UTC epoch ms timestamp.
   function nextChange(now) {
     const d = new Date(now);
     const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), PRICE_HOUR_UTC);
@@ -179,22 +196,47 @@
     return ">2 days";
   }
 
-  // Projection at the next price-change window using per-hour rate.
-  function predict(id, sp, now) {
-    const a = Math.abs(sp);
+  function statusLabel(sp, pred) {
+    const ref = pred ?? sp;
+    if (ref >= 100) return "Very likely to rise";
+    if (ref <= -100) return "Very likely to drop";
+    if (ref <= -97) return "Likely to drop";
+    if (ref >= 97) return "Likely to rise";
+    return "Unlikely to change";
+  }
+
+  function predict(player, sp, now) {
+    const id = player.id;
     const dir = Math.sign(sp);
-    if (!dir) return { proj: null, label: "–" };
-    if (a >= 100) return { proj: a, label: "Tonight" };
+    const officialRate = readOfficialRate(player);
+    const r = officialRate !== null ? officialRate : rates[id];
+    const hrs = hoursToChange(now);
 
-    const r = rates[id];
-    if (r === undefined) return { proj: null, label: "–" };
+    const officialPred = readOfficialPredictedProgress(player);
+    if (officialPred !== null) {
+      const aPred = Math.abs(officialPred);
+      const label =
+        aPred >= 100
+          ? "Tonight"
+          : r && r * dir > 0
+            ? formatEta((100 - Math.abs(sp)) / (r * dir) / 24)
+            : "–";
+      return { proj: officialPred, label, status: statusLabel(sp, officialPred) };
+    }
 
+    if (!dir) return { proj: null, label: "–", status: "Unlikely to change" };
+    if (r === undefined) {
+      const fallbackProj = sp;
+      return { proj: fallbackProj, label: Math.abs(sp) >= 100 ? "Tonight" : "–", status: statusLabel(sp, fallbackProj) };
+    }
+
+    const proj = sp + r * hrs;
     const rd = r * dir;
-    const proj = a + rd * hoursToChange(now);
-    if (rd <= 0) return { proj, label: "Stalling" };
+    if (Math.abs(proj) >= 100) return { proj, label: "Tonight", status: statusLabel(sp, proj) };
+    if (rd <= 0) return { proj, label: "Stalling", status: statusLabel(sp, proj) };
 
-    const days = (100 - a) / rd / 24;
-    return { proj, label: formatEta(days) };
+    const days = (100 - Math.abs(sp)) / rd / 24;
+    return { proj, label: formatEta(days), status: statusLabel(sp, proj) };
   }
 
   function updateRates(now) {
@@ -327,20 +369,20 @@
           .map(({ p, sp }) => {
             const dir = Math.sign(sp);
             const col = dir > 0 ? "up" : "down";
-            const pr = predict(p.id, sp, now);
-            const r = rates[p.id];
+            const pr = predict(p, sp, now);
+            const r = readOfficialRate(p) ?? rates[p.id];
             const rateCell =
               r === undefined ? "–" : `<span class="${r * dir >= 0 ? "up" : "down"}">${signedPct(r)}</span>`;
             const predCell =
               pr.proj === null
                 ? "–"
-                : `<span class="${col}">${Math.max(0, pr.proj).toFixed(2)}%</span><div class="small muted">${pr.label}</div>`;
+                : `<span class="${col}">${signedPct(pr.proj)}</span><div class="small muted">${esc(pr.label)} · ${esc(pr.status)}</div>`;
 
             return `<tr>
               <td>${nameCell(p, true)}</td>
               <td>${esc(teamById.get(p.team)?.short ?? "")}</td>
               <td>
-                <div>${absPct(sp)}</div>
+                <div>${signedPct(sp)}</div>
                 <div class="bar"><span class="${col}" style="width:${Math.min(100, Math.abs(sp))}%"></span></div>
               </td>
               <td class="n">${predCell}</td>
@@ -355,9 +397,8 @@
       renderTable(Date.now());
     });
 
-    $("table-note").textContent = Object.keys(rates).length
-      ? "Uses ownership tiers, status flags, chip-noise filtering, and blended per-hr velocity."
-      : "Uses ownership tiers, status flags, and chip-noise filtering; per-hr rates appear after ~15 min.";
+    $("table-note").textContent =
+      "Uses official FPL progress when available, projecting forward by hourly rate to the next price change.";
   }
 
   // ---------- Summary Tab ----------
