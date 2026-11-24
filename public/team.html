@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>My team · FPL</title>
-  <meta name="description" content="Your Fantasy Premier League squad, deadline, transfers and gameweek summary.">
+  <meta name="description" content="Your Fantasy Premier League squad, fixtures, expected points, deadline and gameweek summary.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
   <script src="/team-view.js" defer></script>
@@ -19,10 +19,12 @@
   <main class="mt">
     <div class="mt-layout">
       <div class="mt-main">
+        <p class="mt-who" id="team-meta"></p>
+
         <div class="mt-banner">
-          <button id="gw-prev" class="mt-gwbtn" type="button" aria-label="Previous gameweek">‹</button>
+          <button id="gw-prev" class="mt-gwbtn" type="button" aria-label="Previous gameweek">PREV</button>
           <span id="gw-title">Gameweek</span>
-          <button id="gw-next" class="mt-gwbtn" type="button" aria-label="Next gameweek">›</button>
+          <button id="gw-next" class="mt-gwbtn" type="button" aria-label="Next gameweek">NEXT</button>
         </div>
 
         <div class="mt-deadline">
@@ -35,6 +37,10 @@
           </div>
         </div>
 
+        <p class="meta" id="team-note"></p>
+
+        <div id="mt-view"></div>
+
         <div class="mt-tiles">
           <div class="mt-tile"><div class="mt-tl">Transfers</div><div class="mt-tv" id="tile-tr">–</div></div>
           <div class="mt-tile"><div class="mt-tl">Cost</div><div class="mt-tv" id="tile-cost">–</div></div>
@@ -42,10 +48,6 @@
           <div class="mt-tile"><div class="mt-tl">xPts</div><div class="mt-tv" id="tile-xpts">–</div></div>
         </div>
 
-        <p class="meta" id="team-note"></p>
-
-        <section id="content"></section>
-        <section id="rank-gains-slot"></section>
         <section id="summary-slot"></section>
 
         <section class="rg-card">
@@ -83,11 +85,49 @@
           <button type="button" role="tab" data-side="watch" aria-selected="false">Watchlist</button>
           <button type="button" role="tab" data-side="summary" aria-selected="false">Summary</button>
         </div>
-        <div class="mt-sidebody" id="side-body"></div>
+        <div class="mt-sidebody">
+          <div id="side-players">
+            <div class="mt-frow2">
+              <label class="mt-rng">
+                <span>Ownership <b id="own-val">100%</b></span>
+                <input id="own" type="range" min="0" max="100" step="1" value="100">
+              </label>
+              <label class="mt-rng">
+                <span>Price <b id="price-val">16m</b></span>
+                <input id="price" type="range" min="4" max="16" step="0.1" value="16">
+              </label>
+            </div>
+
+            <label class="mt-f">
+              <span>Position</span>
+              <select id="f-pos" aria-label="Position"><option value="0">Select Position</option></select>
+            </label>
+
+            <label class="mt-f">
+              <span>Club</span>
+              <select id="f-club" aria-label="Club"><option value="0">Select Club</option></select>
+            </label>
+
+            <label class="mt-f">
+              <span>Sort By</span>
+              <select id="f-sort" aria-label="Sort by">
+                <option value="default">Select Option</option>
+                <option value="points">Points</option>
+                <option value="price">Price</option>
+                <option value="form">Form</option>
+                <option value="own">Ownership</option>
+              </select>
+            </label>
+
+            <label class="mt-f">
+              <span>Name</span>
+              <input id="f-name" type="search" placeholder="Search by name">
+            </label>
+          </div>
+          <p class="mt-sempty" id="side-msg" hidden></p>
+        </div>
       </aside>
     </div>
-
-    <div id="mt-view"></div>
   </main>
 
   <footer>
