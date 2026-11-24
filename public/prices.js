@@ -6,16 +6,17 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
-  const absPct = (v) => `${Math.abs(v).toFixed(1)}%`;
   const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
+  const signed1Pct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`;
   const PAGE = 25;
 
-  // Fallback settings when upstream snapshot lacks explicit official progress fields.
-  const OWN_FLOOR = 1.7;
-  const PRICE_HOUR_UTC = 23; // overnight price change hour in UTC (01:00 CAT / 23:00 UTC)
-  const SAMPLE_MIN = 15; // matches 15-minute progress update cadence
-  const GW_MAX_STEPS = 3;
+  // Calibration settings aligned with official FPL & LiveFPL behavior.
+  const OWN_FLOOR = 1.7; // players below 1.7% ownership are excluded unless searched by name
+  const PRICE_HOUR_UTC = 0; // 00:00 UTC = 02:00 CAT (matches official FPL countdown)
+  const SAMPLE_MIN = 15; // 15-minute sample interval
+  const GW_MAX_STEPS = 3; // max +/-£0.3m movement per gameweek
 
+  // Ownership tiers: [minOwnershipPct, riseThresholdNet, fallThresholdNet]
   const OWN_TIERS = [
     [50.0, 340000, 310000],
     [30.0, 275000, 250000],
@@ -104,7 +105,6 @@
     return dir > 0 ? gwChange >= GW_MAX_STEPS : gwChange <= -GW_MAX_STEPS;
   }
 
-  // Prefer official FPL progress fields when provided by app.js / snapshot.
   function readOfficialProgress(p) {
     const fields = [
       p.price_progress,
@@ -146,15 +146,28 @@
   }
 
   // Positive = rising progress, negative = falling progress.
+  // Deducts transfers already consumed by prior price changes in the current gameweek.
   function signedProgress(p) {
     const official = readOfficialProgress(p);
     if (official !== null) return official;
 
     const n = effectiveNetTransfers(p);
     if (!n) return 0;
+
     const dir = n > 0 ? 1 : -1;
     if (isGwCapped(p, dir)) return 0;
-    return (n / effectiveThreshold(p, dir)) * 100;
+
+    const threshold = effectiveThreshold(p, dir);
+    const gwSteps = Number(p.cost_change_event) || 0;
+
+    // Subtract transfers already "spent" on earlier rises/falls in this gameweek
+    const consumedNet = gwSteps * threshold;
+    const remainingNet = n - consumedNet;
+
+    // If all net transfers in this direction were already spent on earlier moves, progress resets near 0
+    if (Math.sign(remainingNet) !== dir) return 0;
+
+    return (remainingNet / threshold) * 100;
   }
 
   function syncPriceMeta(now) {
@@ -226,8 +239,7 @@
 
     if (!dir) return { proj: null, label: "–", status: "Unlikely to change" };
     if (r === undefined) {
-      const fallbackProj = sp;
-      return { proj: fallbackProj, label: Math.abs(sp) >= 100 ? "Tonight" : "–", status: statusLabel(sp, fallbackProj) };
+      return { proj: sp, label: Math.abs(sp) >= 100 ? "Tonight" : "–", status: statusLabel(sp, sp) };
     }
 
     const proj = sp + r * hrs;
@@ -345,6 +357,11 @@
       .map((p) => ({ p, sp: signedProgress(p) }))
       .filter((x) => Math.sign(x.sp) === dirWant);
 
+    // Exclude sub-1.7% owned players from general listings unless user searches or checks My Team / Watchlist
+    if (!needle && state.sub === "all") {
+      items = items.filter((x) => ownershipPct(x.p) >= OWN_FLOOR);
+    }
+
     if (state.sub === "mine") items = items.filter((x) => mine.has(x.p.id));
     if (state.sub === "watch") items = items.filter((x) => watch.includes(x.p.id));
     if (pos) items = items.filter((x) => x.p.element_type === pos);
@@ -382,7 +399,7 @@
               <td>${nameCell(p, true)}</td>
               <td>${esc(teamById.get(p.team)?.short ?? "")}</td>
               <td>
-                <div>${signedPct(sp)}</div>
+                <div>${signed1Pct(sp)}</div>
                 <div class="bar"><span class="${col}" style="width:${Math.min(100, Math.abs(sp))}%"></span></div>
               </td>
               <td class="n">${predCell}</td>
@@ -398,7 +415,7 @@
     });
 
     $("table-note").textContent =
-      "Uses official FPL progress when available, projecting forward by hourly rate to the next price change.";
+      "Accounts for prior GW price changes, status flags, ownership tiers (≥1.7%), and hourly velocity.";
   }
 
   // ---------- Summary Tab ----------
@@ -418,7 +435,7 @@
       const n = Math.round(effectiveNetTransfers(p));
       const netStr = `${n >= 0 ? "+" : "−"}${Math.abs(n).toLocaleString()} net`;
       const value = state.pct
-        ? `<span class="${sp > 0 ? "up" : "down"}">${signedPct(sp)}</span>`
+        ? `<span class="${sp > 0 ? "up" : "down"}">${signed1Pct(sp)}</span>`
         : netStr;
       return `<div class="sumrow">
         <div class="pl">${shirt(p)}<span class="pname">${esc(p.web_name)}${flagBadge(p)}</span></div>
