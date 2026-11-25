@@ -2,7 +2,7 @@
    Once the server has rebuilt its transfer windows, progress comes only from the server, so players
    who have already changed are not shown with stale figures. Before that, the local estimate is used.
    Status uses predicted progress: 95% or more is "Likely", 100% or more is "Very likely".
-   Ten players per page. Past changes and locks come from /api/prices/events. Starts on fpl:ready from app.js. */
+   Empty and error states use UI from ui.js. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "prices") return;
   const $ = (id) => document.getElementById(id);
@@ -60,6 +60,12 @@
   let eventsLoaded = false;
   let eventsError = null;
   const past = { filter: "all", limit: PAST_PAGE };
+
+  // Shorthand for the shared state helper, so a missing ui.js shows a plain message rather than breaking the page.
+  const stateRow = (colspan, options) =>
+    window.UI
+      ? UI.row(colspan, options)
+      : `<tr><td colspan="${colspan}">${esc(options.title)}${options.text ? ` ${esc(options.text)}` : ""}</td></tr>`;
 
   // ---------- Storage ----------
   const readJSON = (key, fallback) => {
@@ -270,16 +276,15 @@
 
   const starButton = (id) => {
     const watching = watch.includes(id);
-    return `<button class="star" type="button" data-watch="${id}" aria-pressed="${watching}" aria-label="${
-      watching ? "Remove from watchlist" : "Add to watchlist"
-    }">${watching ? "★" : "☆"}</button>`;
+    const label = watching ? "Remove from watchlist" : "Add to watchlist";
+    return `<button class="star" type="button" data-watch="${id}" aria-pressed="${watching}" aria-label="${label}" title="${label}">${watching ? "★" : "☆"}</button>`;
   };
 
   // Info icon for fit players, warning icon for flagged players.
   const flagIcon = (p) => {
     const fl = flagInfo(p);
     return fl.code
-      ? `<span class="fl-warn" role="img" aria-label="${esc(fl.code)}" title="${esc(fl.code)}">!</span>`
+      ? `<span class="fl-warn" role="img" aria-label="Flagged: ${esc(fl.code)}" title="${esc(fl.code)}">!</span>`
       : `<span class="fl-info" aria-hidden="true">i</span>`;
   };
 
@@ -317,6 +322,20 @@
     return items.sort((a, b) => Math.abs(b.sp) - Math.abs(a.sp));
   }
 
+  // Empty-state message for the table, with a next step where one exists.
+  function tableEmptyState() {
+    if (state.sub === "mine" && !mine.size) {
+      return { title: "No squad saved yet", text: "Import your squad in the Planner to see your players here.", action: { label: "Open the Planner", href: "/planner" } };
+    }
+    if (state.sub === "watch" && !watch.length) {
+      return { title: "Your watchlist is empty", text: "Press the star next to a player to follow them here." };
+    }
+    if (!serverReady) {
+      return { icon: "⏳", title: "Progress is still being calculated", text: "It appears after the next data update, usually within a few minutes." };
+    }
+    return { title: "No players match these filters", text: "Try another position or team, or clear the search.", action: null };
+  }
+
   function setupTableHead() {
     const tbl = $("rows").closest("table");
     if (!tbl) return;
@@ -326,14 +345,14 @@
       tbl.prepend(thead);
     }
     thead.innerHTML = `<tr>
-      <th>Player</th>
-      <th>Status</th>
-      <th class="n">Progress</th>
-      <th class="n">Predicted progress</th>
-      <th>Ownership trend</th>
-      <th class="n">Current price</th>
-      <th class="n">Purchase price</th>
-      <th class="n">Selling price</th>
+      <th scope="col">Player</th>
+      <th scope="col">Status</th>
+      <th scope="col" class="n">Progress</th>
+      <th scope="col" class="n">Predicted progress</th>
+      <th scope="col">Ownership trend</th>
+      <th scope="col" class="n">Current price</th>
+      <th scope="col" class="n">Purchase price</th>
+      <th scope="col" class="n">Selling price</th>
     </tr>`;
   }
 
@@ -347,7 +366,7 @@
       bar.id = "tbl-pager";
       bar.className = "pager";
       bar.innerHTML = `<button type="button" id="tbl-prev">← Previous</button>
-        <span id="tbl-pos"></span>
+        <span id="tbl-pos" aria-live="polite"></span>
         <button type="button" id="tbl-next">Next →</button>`;
       $("rows").closest(".table-wrap").after(bar);
       $("tbl-prev").addEventListener("click", () => {
@@ -362,7 +381,7 @@
     bar.hidden = state.tab !== "table";
     $("tbl-prev").disabled = tablePage <= 1;
     $("tbl-next").disabled = tablePage >= pages;
-    $("tbl-pos").textContent = `${tablePage} of ${pages}`;
+    $("tbl-pos").textContent = `Page ${tablePage} of ${pages}`;
   }
 
   function trendCell(p) {
@@ -378,21 +397,16 @@
 
     const start = (tablePage - 1) * TABLE_PAGE;
     const items = all.slice(start, start + TABLE_PAGE);
-    const emptyText =
-      state.sub === "mine" && !mine.size
-        ? "Set your team first, by importing your squad in the Planner."
-        : state.sub === "watch" && !watch.length
-          ? "Press the star next to a player to add them here."
-          : serverReady
-            ? "No players are close to a change in this list right now."
-            : "Progress is still being calculated. It will appear after the next log.";
 
-    $("rows").innerHTML = items.length
-      ? items
-          .map(({ p, sp, pred }) => {
-            const st = statusFor(pred);
-            const locked = isLocked(p) ? `<div class="small muted">Price locked for a week</div>` : "";
-            return `<tr>
+    if (!items.length) {
+      const e = tableEmptyState();
+      $("rows").innerHTML = stateRow(8, { kind: "empty", ...e });
+    } else {
+      $("rows").innerHTML = items
+        .map(({ p, sp, pred }) => {
+          const st = statusFor(pred);
+          const locked = isLocked(p) ? `<div class="small muted">Price locked for a week</div>` : "";
+          return `<tr>
               <td><div class="pl">${flagIcon(p)}${shirt(p)}<div>
                 <div class="pname">${esc(p.web_name)}</div>
                 <div class="small muted">${esc(teamById.get(p.team)?.name ?? "")} · ${esc(posById.get(p.element_type) ?? "")}</div>
@@ -405,9 +419,9 @@
               <td class="n">–</td>
               <td class="n">–</td>
             </tr>`;
-          })
-          .join("")
-      : `<tr><td colspan="8">${esc(emptyText)}</td></tr>`;
+        })
+        .join("");
+    }
 
     $("table-note").textContent =
       "Progress is our estimate from transfers since each player's last price change. Status follows the official rule: 95% is likely, 100% is very likely.";
@@ -437,7 +451,8 @@
       </div>`;
     };
 
-    const list = (items) => (items.length ? items.map(row).join("") : `<div class="sumrow muted">None</div>`);
+    const list = (items) =>
+      items.length ? items.map(row).join("") : `<div class="sumrow muted">None right now</div>`;
 
     $("summary").innerHTML = `
       <div>
@@ -467,7 +482,9 @@
       .slice(0, 24);
 
     if (!top.length) {
-      $("trends").innerHTML = `<p class="meta">No transfers recorded this gameweek yet.</p>`;
+      $("trends").innerHTML = window.UI
+        ? UI.state({ kind: "empty", icon: "◌", title: "No transfers yet this gameweek", text: "Transfer activity appears here as managers make moves." })
+        : `<p class="meta">No transfers recorded this gameweek yet.</p>`;
       return;
     }
 
@@ -494,7 +511,7 @@
       })
       .join("");
 
-    $("trends").innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Transfer trends">${bubbles}</svg>`;
+    $("trends").innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Transfer trends for the top ${top.length} players by transfers this gameweek">${bubbles}</svg>`;
   }
 
   // ---------- Past tab (price changes and locks) ----------
@@ -507,7 +524,7 @@
       locks = new Map(Object.entries(data.locks ?? {}).map(([id, until]) => [Number(id), Number(until)]));
       eventsError = null;
     } catch (err) {
-      eventsError = err.message;
+      eventsError = err.message || "Unknown error";
     }
     eventsLoaded = true;
     renderCurrent();
@@ -539,17 +556,19 @@
     const thead = tbl.querySelector("thead");
     if (thead) {
       thead.innerHTML = `<tr>
-        <th>Player</th>
-        <th>Club</th>
-        <th>Date</th>
-        <th class="n">New price</th>
-        <th class="n">Move</th>
+        <th scope="col">Player</th>
+        <th scope="col">Club</th>
+        <th scope="col">Date</th>
+        <th scope="col" class="n">New price</th>
+        <th scope="col" class="n">Move</th>
       </tr>`;
     }
 
     if (!document.getElementById("past-filter")) {
       const bar = document.createElement("div");
       bar.id = "past-filter";
+      bar.setAttribute("role", "group");
+      bar.setAttribute("aria-label", "Filter price changes");
       bar.innerHTML = [
         ["all", "All"],
         ["rise", "Rises"],
@@ -557,7 +576,7 @@
       ]
         .map(
           ([k, l]) =>
-            `<button type="button" class="subtab" data-past="${k}" aria-selected="${past.filter === k}">${l}</button>`,
+            `<button type="button" class="subtab" data-past="${k}" aria-pressed="${past.filter === k}">${l}</button>`,
         )
         .join("");
       tbl.closest(".table-wrap").before(bar);
@@ -568,7 +587,7 @@
         past.filter = b.dataset.past;
         past.limit = PAST_PAGE;
         bar.querySelectorAll("[data-past]").forEach((x) =>
-          x.setAttribute("aria-selected", String(x.dataset.past === past.filter)),
+          x.setAttribute("aria-pressed", String(x.dataset.past === past.filter)),
         );
         renderPast();
       });
@@ -598,11 +617,16 @@
     const body = $("past-rows");
 
     if (!eventsLoaded) {
-      body.innerHTML = `<tr><td colspan="5">Loading price changes…</td></tr>`;
+      body.innerHTML = `<tr><td colspan="5"><span class="muted">Loading price changes…</span></td></tr>`;
       return;
     }
     if (eventsError) {
-      body.innerHTML = `<tr><td colspan="5">Could not load price changes. ${esc(eventsError)}</td></tr>`;
+      body.innerHTML = stateRow(5, {
+        kind: "error",
+        title: "Could not load price changes",
+        text: "Check your connection, then try again.",
+        action: { label: "Try again", retry: true },
+      });
       return;
     }
 
@@ -611,28 +635,33 @@
     );
     const shown = list.slice(0, past.limit);
 
-    body.innerHTML = shown.length
-      ? shown
-          .map((e) => {
-            const p = e.id !== null && e.id !== undefined ? byId.get(e.id) : undefined;
-            const up = e.dir === 1;
-            const nameHtml = p
-              ? nameCell(p, false)
-              : `<div class="pl"><div class="pname">${esc(e.name)}</div></div>`;
-            return `<tr>
+    if (!shown.length) {
+      body.innerHTML = events.length
+        ? stateRow(5, { kind: "empty", title: "No changes match this filter", text: "Choose All to see every recent change." })
+        : stateRow(5, {
+            kind: "empty",
+            icon: "◌",
+            title: "No price changes recorded yet",
+            text: "Changes appear here as FPL makes them.",
+          });
+    } else {
+      body.innerHTML = shown
+        .map((e) => {
+          const p = e.id !== null && e.id !== undefined ? byId.get(e.id) : undefined;
+          const up = e.dir === 1;
+          const nameHtml = p
+            ? nameCell(p, false)
+            : `<div class="pl"><div class="pname">${esc(e.name)}</div></div>`;
+          return `<tr>
               <td>${nameHtml}</td>
               <td>${esc(e.club)}</td>
               <td>${esc(whenLabel(e))}</td>
               <td class="n">${money(e.cost)}</td>
               <td class="n ${up ? "up" : "down"}">${up ? "Rise" : "Fall"}<div class="small muted">${esc(moveNote(e))}</div></td>
             </tr>`;
-          })
-          .join("")
-      : `<tr><td colspan="5">${
-          events.length
-            ? "No changes match this filter."
-            : "No price changes recorded yet. Changes appear here as FPL makes them."
-        }</td></tr>`;
+        })
+        .join("");
+    }
 
     const wrap = body.closest(".table-wrap");
     let more = document.getElementById("more-past");
@@ -692,7 +721,11 @@
   // ---------- Wiring ----------
   function setTab(tab) {
     state.tab = tab;
-    document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+    document.querySelectorAll(".tab").forEach((b) => {
+      const on = b.dataset.tab === tab;
+      b.setAttribute("aria-selected", String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
     for (const t of ["table", "summary", "trends", "past"]) $(`tab-${t}`).hidden = t !== tab;
     const pager = document.getElementById("tbl-pager");
     if (pager) pager.hidden = tab !== "table";
@@ -713,6 +746,10 @@
     watch = readJSON(KEY_WATCH, []);
     mine = new Set(readJSON(KEY_BASE, []));
 
+    // Accessible names for controls that otherwise have only a placeholder or an icon.
+    $("q").setAttribute("aria-label", "Search players by name");
+    if ($("pct")) $("pct").setAttribute("aria-label", "Show summary figures as percentages");
+
     snap.positions.forEach((p) => $("pos").append(new Option(p.short, String(p.id))));
     [...snap.teams]
       .sort((a, b) => a.short.localeCompare(b.short))
@@ -724,7 +761,7 @@
       b.addEventListener("click", () => {
         state.sub = b.dataset.sub;
         document.querySelectorAll(".subtab").forEach((x) =>
-          x.setAttribute("aria-selected", String(x.dataset.sub === state.sub)),
+          x.setAttribute("aria-pressed", String(x.dataset.sub === state.sub)),
         );
         resetTable();
       }),
@@ -759,9 +796,23 @@
       if (state.sub === "watch") {
         renderTable(Date.now());
       } else {
+        const label = watching ? "Remove from watchlist" : "Add to watchlist";
         btn.setAttribute("aria-pressed", String(watching));
-        btn.setAttribute("aria-label", watching ? "Remove from watchlist" : "Add to watchlist");
+        btn.setAttribute("aria-label", label);
+        btn.setAttribute("title", label);
         btn.textContent = watching ? "★" : "☆";
+      }
+    });
+
+    // Retry buttons inside error states: reload the past list, or the whole page for anything else.
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest("[data-ui-retry]")) return;
+      if (e.target.closest("#past-rows")) {
+        eventsLoaded = false;
+        renderPast();
+        loadEvents();
+      } else {
+        location.reload();
       }
     });
 
