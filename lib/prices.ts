@@ -227,44 +227,171 @@ export async function priceProgress(env: Env): Promise<Response> {
   });
 }
 
-/** Recent price changes, newest first, with player and club names, and the current price locks. */
+// Official price changes captured from the FPL site before logging began.
+// Format: [date, name as shown on FPL, club short name, previous price (tenths of £m), new price (tenths)].
+// Rows from 22 to 24 November that were captured without previous prices have them inferred as one step from the new price.
+const IMPORTED: [string, string, string, number, number][] = [
+  ["2026-11-25", "Andrey Santos", "MUN", 47, 46],
+  ["2026-11-25", "Grimes", "COV", 48, 47],
+  ["2026-11-25", "Henry", "BRE", 44, 43],
+  ["2026-11-25", "Hill", "BOU", 56, 57],
+  ["2026-11-25", "Merino", "ARS", 57, 56],
+  ["2026-11-25", "Schlager", "NFO", 50, 49],
+  ["2026-11-24", "Egan", "HUL", 41, 40],
+  ["2026-11-24", "Rudoni", "COV", 49, 50],
+  ["2026-11-24", "Tavernier", "BOU", 67, 68],
+  ["2026-11-24", "Wood", "NFO", 57, 56],
+  ["2026-11-24", "Woodman", "LIV", 40, 39],
+  ["2026-11-23", "Buendía", "AVL", 59, 58],
+  ["2026-11-23", "Cherki", "MCI", 79, 78],
+  ["2026-11-23", "Damsgaard", "BRE", 53, 52],
+  ["2026-11-23", "Gozo", "CRY", 49, 48],
+  ["2026-11-23", "Gvardiol", "MCI", 56, 55],
+  ["2026-11-23", "Hato", "CHE", 45, 44],
+  ["2026-11-23", "Heaven", "MUN", 43, 42],
+  ["2026-11-23", "Kostoulas", "BHA", 58, 57],
+  ["2026-11-23", "Maeda", "IPS", 53, 52],
+  ["2026-11-23", "Maguire", "MUN", 46, 45],
+  ["2026-11-23", "N.Jackson", "AVL", 72, 73],
+  ["2026-11-23", "N.Williams", "NFO", 49, 48],
+  ["2026-11-23", "Palmer", "IPS", 40, 39],
+  ["2026-11-23", "Tsimikas", "LIV", 49, 48],
+  ["2026-11-23", "White", "ARS", 54, 53],
+  ["2026-11-23", "Wirtz", "LIV", 73, 74],
+  ["2026-11-22", "Belloumi", "HUL", 53, 52],
+  ["2026-11-22", "Drakes-Thomas", "CRY", 44, 43],
+  ["2026-11-22", "Evanilson", "BOU", 65, 66],
+  ["2026-11-22", "Greaves", "IPS", 39, 38],
+  ["2026-11-22", "Kerkez", "LIV", 53, 52],
+  ["2026-11-22", "M.Sangaré", "BRE", 54, 53],
+  ["2026-11-22", "McNeil", "CRY", 53, 52],
+  ["2026-11-22", "Núñez", "IPS", 48, 47],
+  ["2026-11-22", "Ndiaye", "MCI", 58, 57],
+  ["2026-11-22", "Nmecha", "LEE", 53, 52],
+  ["2026-11-22", "Oriola", "BHA", 44, 43],
+  ["2026-11-22", "Rogers", "CHE", 82, 83],
+  ["2026-11-22", "Schuster", "BRE", 45, 44],
+];
+
+// Lower-case, accent-free form of a name, so "Šeško" and "Buendia" match.
+const norm = (s: string): string =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+interface Listed {
+  id: number | null;
+  name: string;
+  club: string;
+  code: number | null;
+  dir: 1 | -1;
+  at: string | null; // ISO time when logged, date only when imported, null for this gameweek
+  cost: number;
+  net: number | null;
+  own: number | null;
+  pred: number | null;
+  source: "logged" | "imported" | "gameweek";
+}
+
+/**
+ * Price changes, newest first. Three sources, de-duplicated:
+ *  - logged: changes this server saw, with the net transfers behind them
+ *  - imported: official changes captured from the FPL site before logging began
+ *  - gameweek: any player whose price has moved this gameweek, from the snapshot
+ */
 export async function priceEvents(env: Env): Promise<Response> {
   const snap = await env.FPL_KV.get<Snapshot>("snapshot", "json");
   if (!snap) return json({ error: "Not available yet." }, 503);
 
-  const events = (await env.FPL_KV.get<PriceEvent[]>("pl:events", "json")) ?? [];
+  const logged = (await env.FPL_KV.get<PriceEvent[]>("pl:events", "json")) ?? [];
   const last = await env.FPL_KV.get<Last>("pl:last", "json");
-  const players = new Map(snap.players.map((p) => [p.id, p]));
   const teams = new Map(snap.teams.map((t) => [t.id, t]));
-  const now = Date.now();
+  const teamByShort = new Map(snap.teams.map((t) => [t.short, t]));
+  const players = new Map(snap.players.map((p) => [p.id, p]));
+  const playerByKey = new Map<string, Player>();
+  for (const p of snap.players) {
+    playerByKey.set(`${norm(p.web_name)}|${teams.get(p.team)?.short ?? ""}`, p);
+  }
 
+  const seen = new Set<string>();
+  const keyOf = (name: string, club: string, cost: number) => `${norm(name)}|${club}|${cost}`;
+  const out: Listed[] = [];
+
+  for (const e of logged) {
+    const p = players.get(e.id);
+    const t = p ? teams.get(p.team) : undefined;
+    const name = p?.web_name ?? "Unknown";
+    const club = t?.short ?? "";
+    seen.add(keyOf(name, club, e.cost));
+    out.push({
+      id: e.id,
+      name,
+      club,
+      code: t?.code ?? null,
+      dir: e.dir,
+      at: e.at,
+      cost: e.cost,
+      net: e.net,
+      own: e.own,
+      pred: e.pred ?? null,
+      source: "logged",
+    });
+  }
+
+  for (const [date, name, club, prev, cost] of IMPORTED) {
+    const p = playerByKey.get(`${norm(name)}|${club}`);
+    const t = teamByShort.get(club);
+    seen.add(keyOf(name, club, cost));
+    out.push({
+      id: p?.id ?? null,
+      name: p?.web_name ?? name,
+      club,
+      code: t?.code ?? null,
+      dir: cost > prev ? 1 : -1,
+      at: date,
+      cost,
+      net: null,
+      own: null,
+      pred: null,
+      source: "imported",
+    });
+  }
+
+  // Changes this gameweek that are not already listed above.
+  for (const p of snap.players) {
+    const change = Number(p.cost_change_event) || 0;
+    if (!change) continue;
+    const t = teams.get(p.team);
+    const club = t?.short ?? "";
+    if (seen.has(keyOf(p.web_name, club, p.now_cost))) continue;
+    out.push({
+      id: p.id,
+      name: p.web_name,
+      club,
+      code: t?.code ?? null,
+      dir: change > 0 ? 1 : -1,
+      at: null,
+      cost: p.now_cost,
+      net: null,
+      own: null,
+      pred: null,
+      source: "gameweek",
+    });
+  }
+
+  // This gameweek first, then newest to oldest.
+  out.sort((a, b) => {
+    if (!a.at && !b.at) return 0;
+    if (!a.at) return -1;
+    if (!b.at) return 1;
+    return Date.parse(b.at) - Date.parse(a.at);
+  });
+
+  const now = Date.now();
   const locks: Record<string, number> = {};
   for (const [id, row] of Object.entries(last?.players ?? {})) {
     if (row.length >= 5 && row[4] > now) locks[id] = row[4];
   }
 
-  const rows = events
-    .slice()
-    .reverse()
-    .slice(0, 100)
-    .map((e) => {
-      const p = players.get(e.id);
-      const t = p ? teams.get(p.team) : undefined;
-      return {
-        id: e.id,
-        name: p?.web_name ?? "Unknown",
-        club: t?.short ?? "",
-        code: t?.code ?? null,
-        dir: e.dir,
-        at: e.at,
-        cost: e.cost,
-        net: e.net,
-        own: e.own,
-        pred: e.pred ?? null,
-      };
-    });
-
-  return new Response(JSON.stringify({ events: rows, locks }), {
+  return new Response(JSON.stringify({ events: out.slice(0, 150), locks }), {
     headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=60" },
   });
 }
@@ -334,4 +461,49 @@ export async function priceCalibrate(env: Env): Promise<Response> {
     }),
     { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=300" } },
   );
+}
+
+/**
+ * Compares the official progress you supply with our window net, and works out the threshold
+ * FPL must be using for each player. Send { "official": { "Name": progress } }.
+ * Players whose window began before the rebuild are flagged, since their net figure is incomplete.
+ */
+export async function priceCompare(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json().catch(() => ({}))) as { official?: Record<string, number> };
+  const official = body.official ?? {};
+
+  const snap = await env.FPL_KV.get<Snapshot>("snapshot", "json");
+  if (!snap) return json({ error: "Not available yet." }, 503);
+  const last = await env.FPL_KV.get<Last>("pl:last", "json");
+  const ready = last?.v === LAYOUT;
+
+  const byName = new Map(snap.players.map((p) => [p.web_name.toLowerCase(), p]));
+
+  const rows = Object.entries(official).map(([name, off]) => {
+    const p = byName.get(name.trim().toLowerCase());
+    if (!p) return { name, error: "player not found" };
+
+    const row = last?.players[String(p.id)];
+    const net = p.transfers_in - p.transfers_out;
+    const base = row && row.length >= 7 ? row[6] : net;
+    const windowNet = net - base;
+    const own = Number(p.selected_by_percent) || 0;
+    const n = windowNet * (Math.max(0.5, own) > 25 ? 0.92 : 0.95);
+
+    const impliedThreshold = off !== 0 && n !== 0 ? Math.round(Math.abs(n) / (Math.abs(off) / 100)) : null;
+    const tier = TIERS.find(([min]) => own >= min) ?? [0, 90000, 85000];
+    const ourThreshold = off > 0 ? tier[1] : tier[2];
+
+    return {
+      name: p.web_name,
+      official: off,
+      ourProgress: Math.round(modelPct(p, windowNet, false) * 10) / 10,
+      windowNet,
+      ourThreshold,
+      impliedThreshold,
+      windowComplete: ready && (row?.length ?? 0) >= 7 && row![0] === p.now_cost,
+    };
+  });
+
+  return json({ ready, rows });
 }
