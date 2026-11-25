@@ -715,4 +715,66 @@
 
     snap.positions.forEach((p) => $("pos").append(new Option(p.short, String(p.id))));
     [...snap.teams]
-      .sort((a, b) => a.short.localeCompare(b.shor
+      .sort((a, b) => a.short.localeCompare(b.short))
+      .forEach((t) => $("team").append(new Option(t.short, String(t.id))));
+
+    document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+
+    document.querySelectorAll(".subtab").forEach((b) =>
+      b.addEventListener("click", () => {
+        state.sub = b.dataset.sub;
+        document.querySelectorAll(".subtab").forEach((x) =>
+          x.setAttribute("aria-selected", String(x.dataset.sub === state.sub)),
+        );
+        resetTable();
+      }),
+    );
+
+    const setList = (list) => {
+      state.list = list;
+      $("risers").setAttribute("aria-pressed", String(list === "risers"));
+      $("fallers").setAttribute("aria-pressed", String(list === "fallers"));
+      resetTable();
+    };
+    $("risers").addEventListener("click", () => setList("risers"));
+    $("fallers").addEventListener("click", () => setList("fallers"));
+
+    $("q").addEventListener("input", resetTable);
+    $("pos").addEventListener("change", resetTable);
+    $("team").addEventListener("change", resetTable);
+
+    $("pct").addEventListener("change", (e) => {
+      state.pct = e.target.checked;
+      renderSummary(Date.now());
+    });
+
+    $("rows").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-watch]");
+      if (!btn) return;
+      const id = Number(btn.dataset.watch);
+      const watching = !watch.includes(id);
+      watch = watching ? [...watch, id] : watch.filter((x) => x !== id);
+      writeJSON(KEY_WATCH, watch);
+
+      if (state.sub === "watch") {
+        renderTable(Date.now());
+      } else {
+        btn.setAttribute("aria-pressed", String(watching));
+        btn.setAttribute("aria-label", watching ? "Remove from watchlist" : "Add to watchlist");
+        btn.textContent = watching ? "★" : "☆";
+      }
+    });
+
+    startCountdown();
+    refresh();
+    loadEvents();
+    loadProgress();
+    setInterval(refresh, 60_000);
+    setInterval(loadEvents, EVENTS_EVERY_MS);
+    setInterval(loadProgress, PROGRESS_EVERY_MS);
+  }
+
+  document.addEventListener("fpl:ready", (e) => {
+    if (e.detail) init(e.detail);
+  });
+})();
