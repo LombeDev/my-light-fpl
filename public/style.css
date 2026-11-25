@@ -3056,3 +3056,70 @@ tr.you td { font-weight: 700; background: var(--hover); }
 .lp-trend.is-flat { color: var(--lp-muted); }
 
 .lp-table td.n { min-width: 64px; }
+
+
+
+
+/* Prices table, in the style of the official table: status pills, progress chips, info and warning icons. */
+.stpill {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #ffffff;
+}
+.st-vlr { background: #0e9f5a; }
+.st-lr { background: #34d399; color: #06140d; }
+.st-u { background: #e5e7eb; color: #111111; }
+.st-ld { background: #ff4f7b; }
+.st-vld { background: #a4123f; }
+
+.pg {
+  display: inline-block;
+  min-width: 60px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #111111;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pg.is-up { color: #0e7a44; }
+.pg.is-down { color: #c0163c; }
+
+.fl-info,
+.fl-warn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+.fl-info {
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-family: Georgia, serif;
+  font-style: italic;
+  opacity: 0.8;
+}
+.fl-warn { color: #ff3b3b; }
+
+.trend { font-weight: 600; font-size: 13px; }
+.trend.up { color: #34d399; }
+.trend.down { color: #ff6b8a; }
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+.pager button:disabled { opacity: 0.4; }
