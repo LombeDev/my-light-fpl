@@ -1,4 +1,5 @@
 /* prices.js: the Prices page, laid out like the official FPL price change table.
+   Progress is counted from each player's last price change, using the server's figures when available.
    Status uses predicted progress: 95% or more is "Likely", 100% or more is "Very likely".
    Players locked after a red-to-none flag change show no progress. Ten players per page.
    Past changes and locks come from /api/prices/events. Starts on fpl:ready from app.js. */
@@ -12,6 +13,7 @@
   const TABLE_PAGE = 10;
   const PAST_PAGE = 25;
   const EVENTS_EVERY_MS = 5 * 60_000;
+  const PROGRESS_EVERY_MS = 5 * 60_000;
 
   const OWN_FLOOR = 1.7;       // players below this ownership are left out of the general table
   const PRICE_HOUR_UTC = 0;    // 00:00 UTC = 02:00 CAT, the official change time
@@ -49,6 +51,7 @@
   let watch = [];
   let mine = new Set();
   let locks = new Map(); // player id -> lock end time in ms
+  let serverProgress = null; // player id -> progress %, counted since each player's last price change
   let tablePage = 1;
   const state = { tab: "table", sub: "all", list: "risers", pct: true };
 
@@ -139,10 +142,11 @@
   const readOfficialRate = (p) => numberFrom([p.rate_per_hour, p.hourly_progress, p.progress_per_hour]);
 
   // Positive = rising progress, negative = falling progress.
-  // A locked player shows no progress. Otherwise, transfers already used by earlier changes this
-  // gameweek are deducted.
+  // A locked player shows no progress. Otherwise the server's figure is used when available, then the
+  // local estimate, which deducts transfers already used by earlier changes this gameweek.
   function signedProgress(p) {
     if (isLocked(p)) return 0;
+    if (serverProgress && serverProgress[p.id] !== undefined) return serverProgress[p.id];
 
     const official = readOfficialProgress(p);
     if (official !== null) return official;
@@ -384,9 +388,7 @@
       ? items
           .map(({ p, sp, pred }) => {
             const st = statusFor(pred);
-            const locked = isLocked(p)
-              ? `<div class="small muted">Price locked for a week</div>`
-              : "";
+            const locked = isLocked(p) ? `<div class="small muted">Price locked for a week</div>` : "";
             return `<tr>
               <td><div class="pl">${flagIcon(p)}${shirt(p)}<div>
                 <div class="pname">${esc(p.web_name)}</div>
@@ -405,7 +407,7 @@
       : `<tr><td colspan="8">${esc(emptyText)}</td></tr>`;
 
     $("table-note").textContent =
-      "Progress is our estimate from transfers and ownership tiers. Status follows the official rule: 95% is likely, 100% is very likely.";
+      "Progress is our estimate from transfers since each player's last price change. Status follows the official rule: 95% is likely, 100% is very likely.";
   }
 
   // ---------- Summary tab ----------
@@ -506,6 +508,19 @@
     }
     eventsLoaded = true;
     renderCurrent();
+  }
+
+  // Server-side progress, counted from each player's last price change.
+  async function loadProgress() {
+    try {
+      const res = await fetch("/api/prices/progress");
+      if (!res.ok) return;
+      const data = await res.json();
+      serverProgress = data.progress ?? null;
+      renderCurrent();
+    } catch {
+      // Keep the local estimate if the request fails
+    }
   }
 
   function setupPastControls() {
@@ -731,8 +746,10 @@
     startCountdown();
     refresh();
     loadEvents();
+    loadProgress();
     setInterval(refresh, 60_000);
     setInterval(loadEvents, EVENTS_EVERY_MS);
+    setInterval(loadProgress, PROGRESS_EVERY_MS);
   }
 
   document.addEventListener("fpl:ready", (e) => {
