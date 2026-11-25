@@ -1,6 +1,7 @@
 /* prices.js: the Prices page, laid out like the official FPL price change table.
    Status uses predicted progress: 95% or more is "Likely", 100% or more is "Very likely".
-   Ten players per page. Past changes come from /api/prices/events. Starts on fpl:ready from app.js. */
+   Players locked after a red-to-none flag change show no progress. Ten players per page.
+   Past changes and locks come from /api/prices/events. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "prices") return;
   const $ = (id) => document.getElementById(id);
@@ -47,6 +48,7 @@
   let rates = {}; // player id -> progress change per hour (percentage points)
   let watch = [];
   let mine = new Set();
+  let locks = new Map(); // player id -> lock end time in ms
   let tablePage = 1;
   const state = { tab: "table", sub: "all", list: "risers", pct: true };
 
@@ -119,6 +121,9 @@
     return dir > 0 ? gwChange >= GW_MAX_STEPS : gwChange <= -GW_MAX_STEPS;
   }
 
+  // True while a player is in their one-week lock after a red-to-none flag change.
+  const isLocked = (p) => (locks.get(p.id) ?? 0) > Date.now();
+
   const numberFrom = (fields) => {
     for (const val of fields) {
       if (typeof val === "number" && Number.isFinite(val)) return val;
@@ -134,8 +139,11 @@
   const readOfficialRate = (p) => numberFrom([p.rate_per_hour, p.hourly_progress, p.progress_per_hour]);
 
   // Positive = rising progress, negative = falling progress.
-  // Deducts transfers already used by earlier price changes in this gameweek.
+  // A locked player shows no progress. Otherwise, transfers already used by earlier changes this
+  // gameweek are deducted.
   function signedProgress(p) {
+    if (isLocked(p)) return 0;
+
     const official = readOfficialProgress(p);
     if (official !== null) return official;
 
@@ -170,8 +178,9 @@
   }
 
   // Predicted progress at the next change: the official value if we have one, otherwise a
-  // projection from the hourly rate.
+  // projection from the hourly rate. Locked players stay at zero.
   function projectedFor(p, sp, now) {
+    if (isLocked(p)) return 0;
     const official = readOfficialPredictedProgress(p);
     if (official !== null) return official;
     const r = readOfficialRate(p) ?? rates[p.id];
@@ -375,13 +384,16 @@
       ? items
           .map(({ p, sp, pred }) => {
             const st = statusFor(pred);
+            const locked = isLocked(p)
+              ? `<div class="small muted">Price locked for a week</div>`
+              : "";
             return `<tr>
               <td><div class="pl">${flagIcon(p)}${shirt(p)}<div>
                 <div class="pname">${esc(p.web_name)}</div>
                 <div class="small muted">${esc(teamById.get(p.team)?.name ?? "")} · ${esc(posById.get(p.element_type) ?? "")}</div>
               </div></div></td>
               <td><span class="stpill st-${st}">${STATUS[st]}</span></td>
-              <td class="n"><span class="pg ${sp >= 0 ? "is-up" : "is-down"}">${signed1Pct(sp)}</span></td>
+              <td class="n"><span class="pg ${sp >= 0 ? "is-up" : "is-down"}">${signed1Pct(sp)}</span>${locked}</td>
               <td class="n"><span class="pg ${pred >= 0 ? "is-up" : "is-down"}">${signed1Pct(pred)}</span></td>
               <td>${trendCell(p)}</td>
               <td class="n">${money(p.now_cost)}</td>
@@ -480,19 +492,20 @@
     $("trends").innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Transfer trends">${bubbles}</svg>`;
   }
 
-  // ---------- Past tab (logged price changes) ----------
+  // ---------- Past tab (logged price changes and locks) ----------
   async function loadEvents() {
     try {
       const res = await fetch("/api/prices/events");
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       events = Array.isArray(data.events) ? data.events : [];
+      locks = new Map(Object.entries(data.locks ?? {}).map(([id, until]) => [Number(id), Number(until)]));
       eventsError = null;
     } catch (err) {
       eventsError = err.message;
     }
     eventsLoaded = true;
-    if (state.tab === "past") renderPast();
+    renderCurrent();
   }
 
   function setupPastControls() {
