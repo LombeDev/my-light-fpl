@@ -5,6 +5,7 @@ import { livescore } from "../../lib/live";
 import { managers } from "../../lib/managers";
 import { around, pairsFor, sampleSummary } from "../../lib/stats";
 import { gwStats } from "../../lib/gwstats";
+import { priceCalibrate, priceEvents, recordPrices } from "../../lib/prices";
 
 const raw = (body: string, cacheControl: string): Response =>
   new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": cacheControl } });
@@ -19,6 +20,7 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       if (path === "snapshot") {
         await ensureState(env, bg);
         await ensureSnapshot(env, bg);
+        await recordPrices(env, bg);
         const body = await env.FPL_KV.get("snapshot");
         return body ? raw(body, "public, max-age=60") : json({ error: "Not available yet." }, 503);
       }
@@ -42,6 +44,8 @@ export const onRequest: PagesFunction<Env> = async (ctx) => {
       if (path === "managers") return await managers(request, env);
       if (path === "livescore") return await livescore(request, env);
       if (path === "sample") return await sampleSummary(env, bg);
+      if (path === "prices/events") return await priceEvents(env);
+      if (path === "prices/calibrate") return await priceCalibrate(env);
 
       const gm = /^gwstats\/(\d{1,2})$/.exec(path);
       if (gm) return await gwStats(Number(gm[1]));
