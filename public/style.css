@@ -3272,3 +3272,299 @@ tr.you td { font-weight: 700; background: var(--hover); }
 .mn-link:active {
   background: var(--hover, rgba(0, 0, 0, 0.04));
 }
+
+
+/* ==========================================================================
+   Accessibility, dark-mode contrast, and empty/error states.
+   ========================================================================== */
+
+/* Screen-reader-only text, for labels that are visible only to assistive tech. */
+.sr-only,
+.sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link: hidden until a keyboard user tabs to it. Add <a class="skip-link" href="#main">Skip to content</a> at the top of <body>. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2000;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #111111;
+  color: #ffffff;
+  font-weight: 700;
+  transform: translateY(-200%);
+  transition: transform 0.2s ease;
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* Contrast: status pills use darker fills so white text meets 4.5:1. */
+.st-vlr { background: #0b7a46; }
+.st-ld { background: #d6336c; }
+
+/* Contrast: muted text is darkened on light backgrounds and lightened on dark ones. */
+.muted,
+.small.muted {
+  color: var(--muted, #5b6470);
+}
+
+/* Keyboard focus is clear on the dark tables too. */
+.st-table :focus-visible,
+.lp-table :focus-visible,
+.mt-list :focus-visible,
+.tk :focus-visible {
+  outline-color: #7dd3fc;
+}
+
+/* Empty and error states, used by ui.js. */
+.ui-state {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 28px 20px;
+  text-align: center;
+  border: 1px dashed var(--border, #d7dbe2);
+  border-radius: var(--ui-radius, 12px);
+  color: var(--muted, #5b6470);
+  background: var(--surface, #ffffff);
+}
+.ui-state-icon {
+  font-size: 28px;
+  line-height: 1;
+  margin-bottom: 4px;
+  opacity: 0.85;
+}
+.ui-state-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text, #111111);
+}
+.ui-state-text {
+  margin: 0;
+  max-width: 44ch;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ui-state-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  margin-top: 8px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong, #cfd4dc);
+  border-radius: 999px;
+  background: var(--surface, #ffffff);
+  color: var(--text, #111111);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ui-state-btn:hover {
+  border-color: var(--ui-accent, #1f9d55);
+  color: var(--ui-accent, #1f9d55);
+}
+.ui-state.is-error {
+  border-style: solid;
+  border-color: #f2b8b5;
+  background: #fff5f5;
+  color: #8a1c1c;
+}
+.ui-state.is-error .ui-state-title {
+  color: #8a1c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  .muted,
+  .small.muted {
+    color: #b9bfc8;
+  }
+  .st-vlr { background: #0f8a52; }
+  .st-ld { background: #e0457d; }
+  .ui-state.is-error {
+    border-color: #7a2a2a;
+    background: #2a1414;
+    color: #ffb4ad;
+  }
+  .ui-state.is-error .ui-state-title {
+    color: #ffb4ad;
+  }
+}
+
+/* ==========================================================================
+   Global UI polish: tokens, focus, touch targets, motion, tables, loading.
+   Added last so it refines the earlier styles without changing the layout.
+   ========================================================================== */
+
+:root {
+  --ui-radius-sm: 8px;
+  --ui-radius: 12px;
+  --ui-radius-lg: 16px;
+  --ui-gap: 12px;
+  --ui-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 0, 0, 0.05);
+  --ui-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.14);
+  --ui-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ui-focus: #2563eb;
+  --ui-accent: #1f9d55;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* Keyboard focus is always visible, and never shown on mouse clicks. */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+  border-radius: var(--ui-radius-sm);
+}
+
+/* Touch targets: at least 44px on phones, without changing desktop sizes. */
+@media (pointer: coarse) {
+  button,
+  a.button,
+  select,
+  input[type="search"],
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"] {
+    min-height: 44px;
+  }
+  .star,
+  .lp-opt,
+  .th-pill {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Buttons respond when pressed, and lift slightly on mouse hover only. */
+button,
+.button,
+select {
+  transition: transform 0.15s var(--ui-ease), background-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+button:active:not(:disabled),
+.button:active {
+  transform: scale(0.97);
+}
+button:disabled {
+  cursor: not-allowed;
+}
+@media (hover: hover) and (pointer: fine) {
+  button:hover:not(:disabled),
+  .button:hover {
+    box-shadow: var(--ui-shadow);
+  }
+}
+
+/* Cards and panels get a soft, consistent elevation. */
+.rg-card,
+.pt-card,
+.th-card,
+.gs-card-wrap,
+.lp-wrap,
+.mt-list-wrap,
+.st-table-wrap,
+.table-wrap {
+  box-shadow: var(--ui-shadow);
+}
+
+/* Tables: comfortable rows, sticky headers and clean numeric alignment. */
+table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+table td.n,
+table th.n {
+  font-variant-numeric: tabular-nums;
+}
+table tbody tr {
+  transition: background-color 0.15s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  table tbody tr:hover {
+    background-color: rgba(127, 127, 127, 0.06);
+  }
+}
+
+/* Links are clear without looking loud. */
+a {
+  text-underline-offset: 3px;
+  transition: color 0.2s ease;
+}
+
+/* Inputs have a clear focus ring and a calm border. */
+input,
+select,
+textarea {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--ui-focus);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+/* Loading placeholders: a soft shimmer, so lists don't jump when data arrives. */
+@keyframes ui-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.ui-skeleton {
+  display: block;
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(127, 127, 127, 0.12) 25%, rgba(127, 127, 127, 0.22) 37%, rgba(127, 127, 127, 0.12) 63%);
+  background-size: 400% 100%;
+  animation: ui-shimmer 1.4s ease infinite;
+}
+
+/* Fade-in for content that is rendered after loading. */
+@keyframes ui-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+main > section,
+main > .mt-banner,
+main > .mt-deadline {
+  animation: ui-fade-up 0.35s var(--ui-ease) both;
+}
+
+/* Respect the phone's "reduce motion" setting. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
