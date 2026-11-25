@@ -1,33 +1,39 @@
-/* prices.js: countdown, price progress table, predictions, trends and past changes.
-   Past changes come from the server log at /api/prices/events, so changes made while nobody had the
-   page open still appear. Lists show 25 at a time; search and filters run over every player.
-   Starts on fpl:ready from app.js. */
+/* prices.js: the Prices page, laid out like the official FPL price change table.
+   Status uses predicted progress: 95% or more is "Likely", 100% or more is "Very likely".
+   Ten players per page. Past changes come from /api/prices/events. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "prices") return;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
-  const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
   const signed1Pct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`;
-  const PAGE = 25;
+  const TABLE_PAGE = 10;
+  const PAST_PAGE = 25;
   const EVENTS_EVERY_MS = 5 * 60_000;
 
-  // Calibration settings aligned with official FPL & LiveFPL behavior.
-  const OWN_FLOOR = 1.7; // players below 1.7% ownership are excluded unless searched by name
-  const PRICE_HOUR_UTC = 0; // 00:00 UTC = 02:00 CAT (matches official FPL countdown)
-  const SAMPLE_MIN = 15; // 15-minute sample interval
-  const GW_MAX_STEPS = 3; // max +/-£0.3m movement per gameweek
+  const OWN_FLOOR = 1.7;       // players below this ownership are left out of the general table
+  const PRICE_HOUR_UTC = 0;    // 00:00 UTC = 02:00 CAT, the official change time
+  const SAMPLE_MIN = 15;       // progress is sampled every 15 minutes, as on the official site
+  const GW_MAX_STEPS = 3;      // at most £0.3m of movement per gameweek
 
   // Ownership tiers: [minOwnershipPct, riseThresholdNet, fallThresholdNet]
   const OWN_TIERS = [
     [50.0, 340000, 310000],
     [30.0, 275000, 250000],
     [15.0, 220000, 195000],
-    [5.0,  165000, 145000],
-    [1.7,  125000, 110000],
-    [0.0,   90000,  85000],
+    [5.0, 165000, 145000],
+    [1.7, 125000, 110000],
+    [0.0, 90000, 85000],
   ];
+
+  const STATUS = {
+    vlr: "Very likely to rise",
+    lr: "Likely to rise",
+    u: "Unlikely to change",
+    ld: "Likely to drop",
+    vld: "Very likely to drop",
+  };
 
   const KEY_PROG = "fpl.progress";
   const KEY_WATCH = "fpl.watch";
@@ -41,13 +47,13 @@
   let rates = {}; // player id -> progress change per hour (percentage points)
   let watch = [];
   let mine = new Set();
-  const state = { tab: "table", sub: "all", list: "risers", pct: true, limit: PAGE };
+  let tablePage = 1;
+  const state = { tab: "table", sub: "all", list: "risers", pct: true };
 
-  // Logged price changes from the server, newest first.
   let events = [];
   let eventsLoaded = false;
   let eventsError = null;
-  const past = { filter: "all", limit: PAGE };
+  const past = { filter: "all", limit: PAST_PAGE };
 
   // ---------- Storage ----------
   const readJSON = (key, fallback) => {
@@ -67,7 +73,7 @@
     }
   };
 
-  // ---------- Official + Fallback Price Model ----------
+  // ---------- Price model ----------
   const ownershipPct = (p) => {
     const v = Number(p.selected_by_percent);
     return Number.isFinite(v) ? v : 0;
@@ -97,9 +103,7 @@
     if (status === "i") return { code: "INJ", riseMult: 1.0, fallMult: 1.25 };
     if (status === "s") return { code: "SUSP", riseMult: 1.05, fallMult: 1.15 };
     if (status === "u") return { code: "UNAV", riseMult: 1.05, fallMult: 1.2 };
-    if (status === "d" || (hasChance && chance < 75)) {
-      return { code: "DOUBT", riseMult: 1.0, fallMult: 1.1 };
-    }
+    if (status === "d" || (hasChance && chance < 75)) return { code: "DOUBT", riseMult: 1.0, fallMult: 1.1 };
     return { code: "", riseMult: 1.0, fallMult: 1.0 };
   }
 
@@ -115,48 +119,22 @@
     return dir > 0 ? gwChange >= GW_MAX_STEPS : gwChange <= -GW_MAX_STEPS;
   }
 
-  function readOfficialProgress(p) {
-    const fields = [
-      p.price_progress,
-      p.change_progress,
-      p.progress_pct,
-      p.price_change_progress,
-      p.progress,
-    ];
+  const numberFrom = (fields) => {
     for (const val of fields) {
       if (typeof val === "number" && Number.isFinite(val)) return val;
-      if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) {
-        return Number(val);
-      }
+      if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) return Number(val);
     }
     return null;
-  }
+  };
 
-  function readOfficialPredictedProgress(p) {
-    const fields = [
-      p.predicted_progress,
-      p.price_predicted_progress,
-      p.projected_progress,
-    ];
-    for (const val of fields) {
-      if (typeof val === "number" && Number.isFinite(val)) return val;
-      if (typeof val === "string" && val.trim() !== "" && Number.isFinite(Number(val))) {
-        return Number(val);
-      }
-    }
-    return null;
-  }
-
-  function readOfficialRate(p) {
-    const fields = [p.rate_per_hour, p.hourly_progress, p.progress_per_hour];
-    for (const val of fields) {
-      if (typeof val === "number" && Number.isFinite(val)) return val;
-    }
-    return null;
-  }
+  const readOfficialProgress = (p) =>
+    numberFrom([p.price_progress, p.change_progress, p.progress_pct, p.price_change_progress, p.progress]);
+  const readOfficialPredictedProgress = (p) =>
+    numberFrom([p.predicted_progress, p.price_predicted_progress, p.projected_progress]);
+  const readOfficialRate = (p) => numberFrom([p.rate_per_hour, p.hourly_progress, p.progress_per_hour]);
 
   // Positive = rising progress, negative = falling progress.
-  // Deducts transfers already consumed by prior price changes in the current gameweek.
+  // Deducts transfers already used by earlier price changes in this gameweek.
   function signedProgress(p) {
     const official = readOfficialProgress(p);
     if (official !== null) return official;
@@ -169,15 +147,36 @@
 
     const threshold = effectiveThreshold(p, dir);
     const gwSteps = Number(p.cost_change_event) || 0;
-
-    // Subtract transfers already "spent" on earlier rises/falls in this gameweek
-    const consumedNet = gwSteps * threshold;
-    const remainingNet = n - consumedNet;
-
-    // If all net transfers in this direction were already spent on earlier moves, progress resets near 0
+    const remainingNet = n - gwSteps * threshold;
     if (Math.sign(remainingNet) !== dir) return 0;
 
     return (remainingNet / threshold) * 100;
+  }
+
+  function nextChange(now) {
+    const d = new Date(now);
+    const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), PRICE_HOUR_UTC);
+    return t > now ? t : t + 86400000;
+  }
+
+  const hoursToChange = (now) => (nextChange(now) - now) / 3600000;
+
+  // Status is set by predicted progress, as on the official site.
+  function statusFor(pred) {
+    const a = Math.abs(pred);
+    if (a < 95) return "u";
+    if (pred > 0) return a >= 100 ? "vlr" : "lr";
+    return a >= 100 ? "vld" : "ld";
+  }
+
+  // Predicted progress at the next change: the official value if we have one, otherwise a
+  // projection from the hourly rate.
+  function projectedFor(p, sp, now) {
+    const official = readOfficialPredictedProgress(p);
+    if (official !== null) return official;
+    const r = readOfficialRate(p) ?? rates[p.id];
+    if (!Math.sign(sp) || r === undefined) return sp;
+    return sp + r * hoursToChange(now);
   }
 
   function syncPriceMeta(now) {
@@ -189,8 +188,7 @@
 
     for (const p of snap.players) {
       costs[p.id] = p.now_cost;
-      const costChanged =
-        prev?.costs && prev.costs[p.id] !== undefined && prev.costs[p.id] !== p.now_cost;
+      const costChanged = prev?.costs && prev.costs[p.id] !== undefined && prev.costs[p.id] !== p.now_cost;
 
       if (costChanged) {
         progState.p[p.id] = signedProgress(p);
@@ -202,63 +200,6 @@
 
     writeJSON(KEY_PROG, progState);
     writeJSON(KEY_META, { event: eventId, costs, updatedAt: now });
-  }
-
-  function nextChange(now) {
-    const d = new Date(now);
-    const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), PRICE_HOUR_UTC);
-    return t > now ? t : t + 86400000;
-  }
-
-  const hoursToChange = (now) => (nextChange(now) - now) / 3600000;
-
-  function formatEta(days) {
-    if (days <= 0.65) return "Tonight";
-    if (days <= 1.45) return "Tomorrow";
-    if (days <= 2.2) return "2 days";
-    return ">2 days";
-  }
-
-  function statusLabel(sp, pred) {
-    const ref = pred ?? sp;
-    if (ref >= 100) return "Very likely to rise";
-    if (ref <= -100) return "Very likely to drop";
-    if (ref <= -97) return "Likely to drop";
-    if (ref >= 97) return "Likely to rise";
-    return "Unlikely to change";
-  }
-
-  function predict(player, sp, now) {
-    const id = player.id;
-    const dir = Math.sign(sp);
-    const officialRate = readOfficialRate(player);
-    const r = officialRate !== null ? officialRate : rates[id];
-    const hrs = hoursToChange(now);
-
-    const officialPred = readOfficialPredictedProgress(player);
-    if (officialPred !== null) {
-      const aPred = Math.abs(officialPred);
-      const label =
-        aPred >= 100
-          ? "Tonight"
-          : r && r * dir > 0
-            ? formatEta((100 - Math.abs(sp)) / (r * dir) / 24)
-            : "–";
-      return { proj: officialPred, label, status: statusLabel(sp, officialPred) };
-    }
-
-    if (!dir) return { proj: null, label: "–", status: "Unlikely to change" };
-    if (r === undefined) {
-      return { proj: sp, label: Math.abs(sp) >= 100 ? "Tonight" : "–", status: statusLabel(sp, sp) };
-    }
-
-    const proj = sp + r * hrs;
-    const rd = r * dir;
-    if (Math.abs(proj) >= 100) return { proj, label: "Tonight", status: statusLabel(sp, proj) };
-    if (rd <= 0) return { proj, label: "Stalling", status: statusLabel(sp, proj) };
-
-    const days = (100 - Math.abs(sp)) / rd / 24;
-    return { proj, label: formatEta(days), status: statusLabel(sp, proj) };
   }
 
   function updateRates(now) {
@@ -297,16 +238,14 @@
         }
       }
 
-      if (anyChange) {
-        writeJSON(KEY_PROG, { t: now, p: nextSample, rate: nextRate });
-      }
+      if (anyChange) writeJSON(KEY_PROG, { t: now, p: nextSample, rate: nextRate });
       rates = nextRate;
     } else {
       rates = st.rate ?? {};
     }
   }
 
-  // ---------- Shared UI Pieces ----------
+  // ---------- Shared pieces ----------
   const shirt = (p) => {
     const t = teamById.get(p.team);
     const gk = p.element_type === 1;
@@ -315,63 +254,46 @@
       : "";
   };
 
+  const starButton = (id) => {
+    const watching = watch.includes(id);
+    return `<button class="star" type="button" data-watch="${id}" aria-pressed="${watching}" aria-label="${
+      watching ? "Remove from watchlist" : "Add to watchlist"
+    }">${watching ? "★" : "☆"}</button>`;
+  };
+
+  // Info icon for fit players, warning icon for flagged players.
+  const flagIcon = (p) => {
+    const fl = flagInfo(p);
+    return fl.code
+      ? `<span class="fl-warn" role="img" aria-label="${esc(fl.code)}" title="${esc(fl.code)}">!</span>`
+      : `<span class="fl-info" aria-hidden="true">i</span>`;
+  };
+
   const flagBadge = (p) => {
     const fl = flagInfo(p);
     return fl.code ? ` <span class="badge flag-${fl.code.toLowerCase()}">${esc(fl.code)}</span>` : "";
   };
 
-  const starAttrs = (id, watching) => ({
-    pressed: String(watching),
-    label: watching ? "Remove from watchlist" : "Add to watchlist",
-    glyph: watching ? "★" : "☆",
-  });
-
-  const nameCell = (p, withStar) => {
-    const watching = watch.includes(p.id);
-    const sa = starAttrs(p.id, watching);
-    const star = withStar
-      ? `<button class="star" type="button" data-watch="${p.id}" aria-pressed="${sa.pressed}" aria-label="${sa.label}">${sa.glyph}</button>`
-      : "";
-    return `<div class="pl">${shirt(p)}<div>
+  const nameCell = (p, withStar) => `<div class="pl">${shirt(p)}<div>
       <div class="pname">${esc(p.web_name)}${flagBadge(p)}</div>
       <div class="small muted">${esc(posById.get(p.element_type))} ${money(p.now_cost)} · ${ownershipPct(p).toFixed(1)}%</div>
-    </div>${star}</div>`;
-  };
+    </div>${withStar ? starButton(p.id) : ""}</div>`;
 
-  function moreBtn(id, tbody, total, limit, onClick) {
-    const wrap = tbody.closest(".table-wrap");
-    if (!wrap) return;
-    let btn = document.getElementById(id);
-    if (!btn) {
-      const p = document.createElement("p");
-      btn = document.createElement("button");
-      btn.id = id;
-      btn.type = "button";
-      p.append(btn);
-      wrap.after(p);
-      btn.addEventListener("click", onClick);
-    }
-    const left = total - limit;
-    btn.hidden = left <= 0;
-    btn.textContent = `Show more (${Math.max(0, left)} left)`;
-  }
-
-  // ---------- Table Tab ----------
-  function tableItems() {
+  // ---------- Table tab ----------
+  function tableItems(now) {
     const dirWant = state.list === "risers" ? 1 : -1;
     const pos = Number($("pos").value);
     const team = Number($("team").value);
     const needle = $("q").value.trim().toLowerCase();
 
     let items = snap.players
-      .map((p) => ({ p, sp: signedProgress(p) }))
+      .map((p) => {
+        const sp = signedProgress(p);
+        return { p, sp, pred: projectedFor(p, sp, now) };
+      })
       .filter((x) => Math.sign(x.sp) === dirWant);
 
-    // Exclude sub-1.7% owned players from general listings unless user searches or checks My Team / Watchlist
-    if (!needle && state.sub === "all") {
-      items = items.filter((x) => ownershipPct(x.p) >= OWN_FLOOR);
-    }
-
+    if (!needle && state.sub === "all") items = items.filter((x) => ownershipPct(x.p) >= OWN_FLOOR);
     if (state.sub === "mine") items = items.filter((x) => mine.has(x.p.id));
     if (state.sub === "watch") items = items.filter((x) => watch.includes(x.p.id));
     if (pos) items = items.filter((x) => x.p.element_type === pos);
@@ -381,9 +303,67 @@
     return items.sort((a, b) => Math.abs(b.sp) - Math.abs(a.sp));
   }
 
+  function setupTableHead() {
+    const tbl = $("rows").closest("table");
+    if (!tbl) return;
+    let thead = tbl.querySelector("thead");
+    if (!thead) {
+      thead = document.createElement("thead");
+      tbl.prepend(thead);
+    }
+    thead.innerHTML = `<tr>
+      <th>Player</th>
+      <th>Status</th>
+      <th class="n">Progress</th>
+      <th class="n">Predicted progress</th>
+      <th>Ownership trend</th>
+      <th class="n">Current price</th>
+      <th class="n">Purchase price</th>
+      <th class="n">Selling price</th>
+    </tr>`;
+  }
+
+  function renderPager(total) {
+    const pages = Math.max(1, Math.ceil(total / TABLE_PAGE));
+    tablePage = Math.min(Math.max(1, tablePage), pages);
+
+    let bar = document.getElementById("tbl-pager");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "tbl-pager";
+      bar.className = "pager";
+      bar.innerHTML = `<button type="button" id="tbl-prev">← Previous</button>
+        <span id="tbl-pos"></span>
+        <button type="button" id="tbl-next">Next →</button>`;
+      $("rows").closest(".table-wrap").after(bar);
+      $("tbl-prev").addEventListener("click", () => {
+        tablePage -= 1;
+        renderTable(Date.now());
+      });
+      $("tbl-next").addEventListener("click", () => {
+        tablePage += 1;
+        renderTable(Date.now());
+      });
+    }
+    bar.hidden = state.tab !== "table";
+    $("tbl-prev").disabled = tablePage <= 1;
+    $("tbl-next").disabled = tablePage >= pages;
+    $("tbl-pos").textContent = `${tablePage} of ${pages}`;
+  }
+
+  function trendCell(p) {
+    const n = p.transfers_in - p.transfers_out;
+    if (!n) return `<span class="muted">–</span>`;
+    return n > 0 ? `<span class="trend up">▲ Up</span>` : `<span class="trend down">▼ Down</span>`;
+  }
+
   function renderTable(now) {
-    const all = tableItems();
-    const items = all.slice(0, state.limit);
+    setupTableHead();
+    const all = tableItems(now);
+    renderPager(all.length);
+
+    const start = (tablePage - 1) * TABLE_PAGE;
+    const items = all.slice(start, start + TABLE_PAGE);
     const emptyText =
       state.sub === "mine" && !mine.size
         ? "Set your team first, by importing your squad in the Planner."
@@ -393,60 +373,47 @@
 
     $("rows").innerHTML = items.length
       ? items
-          .map(({ p, sp }) => {
-            const dir = Math.sign(sp);
-            const col = dir > 0 ? "up" : "down";
-            const pr = predict(p, sp, now);
-            const r = readOfficialRate(p) ?? rates[p.id];
-            const rateCell =
-              r === undefined ? "–" : `<span class="${r * dir >= 0 ? "up" : "down"}">${signedPct(r)}</span>`;
-            const predCell =
-              pr.proj === null
-                ? "–"
-                : `<span class="${col}">${signedPct(pr.proj)}</span><div class="small muted">${esc(pr.label)} · ${esc(pr.status)}</div>`;
-
+          .map(({ p, sp, pred }) => {
+            const st = statusFor(pred);
             return `<tr>
-              <td>${nameCell(p, true)}</td>
-              <td>${esc(teamById.get(p.team)?.short ?? "")}</td>
-              <td>
-                <div>${signed1Pct(sp)}</div>
-                <div class="bar"><span class="${col}" style="width:${Math.min(100, Math.abs(sp))}%"></span></div>
-              </td>
-              <td class="n">${predCell}</td>
-              <td class="n">${rateCell}</td>
+              <td><div class="pl">${flagIcon(p)}${shirt(p)}<div>
+                <div class="pname">${esc(p.web_name)}</div>
+                <div class="small muted">${esc(teamById.get(p.team)?.name ?? "")} · ${esc(posById.get(p.element_type) ?? "")}</div>
+              </div></div></td>
+              <td><span class="stpill st-${st}">${STATUS[st]}</span></td>
+              <td class="n"><span class="pg ${sp >= 0 ? "is-up" : "is-down"}">${signed1Pct(sp)}</span></td>
+              <td class="n"><span class="pg ${pred >= 0 ? "is-up" : "is-down"}">${signed1Pct(pred)}</span></td>
+              <td>${trendCell(p)}</td>
+              <td class="n">${money(p.now_cost)}</td>
+              <td class="n">–</td>
+              <td class="n">–</td>
             </tr>`;
           })
           .join("")
-      : `<tr><td colspan="5">${esc(emptyText)}</td></tr>`;
-
-    moreBtn("more-table", $("rows"), all.length, state.limit, () => {
-      state.limit += PAGE;
-      renderTable(Date.now());
-    });
+      : `<tr><td colspan="8">${esc(emptyText)}</td></tr>`;
 
     $("table-note").textContent =
-      "Accounts for prior GW price changes, status flags, ownership tiers (≥1.7%), and hourly velocity.";
+      "Progress is our estimate from transfers and ownership tiers. Status follows the official rule: 95% is likely, 100% is very likely.";
   }
 
-  // ---------- Summary Tab ----------
-  function renderSummary() {
+  // ---------- Summary tab ----------
+  function renderSummary(now) {
     const groups = { rise: [], riseMaybe: [], fall: [], fallMaybe: [] };
     for (const p of snap.players) {
       if (ownershipPct(p) < OWN_FLOOR) continue;
       const sp = signedProgress(p);
-      const a = Math.abs(sp);
+      const pred = projectedFor(p, sp, now);
+      const a = Math.abs(pred);
       if (a < 95) continue;
-      const key = sp > 0 ? (a >= 100 ? "rise" : "riseMaybe") : a >= 100 ? "fall" : "fallMaybe";
-      groups[key].push({ p, sp, a });
+      const key = pred > 0 ? (a >= 100 ? "rise" : "riseMaybe") : a >= 100 ? "fall" : "fallMaybe";
+      groups[key].push({ p, pred, a });
     }
     for (const g of Object.values(groups)) g.sort((x, y) => y.a - x.a);
 
-    const row = ({ p, sp }) => {
+    const row = ({ p, pred }) => {
       const n = Math.round(effectiveNetTransfers(p));
       const netStr = `${n >= 0 ? "+" : "−"}${Math.abs(n).toLocaleString()} net`;
-      const value = state.pct
-        ? `<span class="${sp > 0 ? "up" : "down"}">${signed1Pct(sp)}</span>`
-        : netStr;
+      const value = state.pct ? `<span class="${pred > 0 ? "up" : "down"}">${signed1Pct(pred)}</span>` : netStr;
       return `<div class="sumrow">
         <div class="pl">${shirt(p)}<span class="pname">${esc(p.web_name)}${flagBadge(p)}</span></div>
         <div class="val"><div>${money(p.now_cost)}</div><div class="small">${value}</div></div>
@@ -457,20 +424,20 @@
 
     $("summary").innerHTML = `
       <div>
-        <div class="sumhead rise">Predicted rises tonight (${groups.rise.length})</div>
+        <div class="sumhead rise">Predicted rises (${groups.rise.length})</div>
         <div class="sumlist">${list(groups.rise)}</div>
-        <div class="sub-h">Maybe (95%+) (${groups.riseMaybe.length})</div>
+        <div class="sub-h">Likely (95%+) (${groups.riseMaybe.length})</div>
         <div class="sumlist">${list(groups.riseMaybe)}</div>
       </div>
       <div>
-        <div class="sumhead fall">Predicted falls tonight (${groups.fall.length})</div>
+        <div class="sumhead fall">Predicted falls (${groups.fall.length})</div>
         <div class="sumlist">${list(groups.fall)}</div>
-        <div class="sub-h">Maybe (95%+) (${groups.fallMaybe.length})</div>
+        <div class="sub-h">Likely (95%+) (${groups.fallMaybe.length})</div>
         <div class="sumlist">${list(groups.fallMaybe)}</div>
       </div>`;
   }
 
-  // ---------- Trends Tab ----------
+  // ---------- Trends tab ----------
   function renderTrends() {
     const top = snap.players
       .map((p) => ({
@@ -513,7 +480,7 @@
     $("trends").innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Transfer trends">${bubbles}</svg>`;
   }
 
-  // ---------- Past Tab (logged price changes) ----------
+  // ---------- Past tab (logged price changes) ----------
   async function loadEvents() {
     try {
       const res = await fetch("/api/prices/events");
@@ -528,7 +495,6 @@
     if (state.tab === "past") renderPast();
   }
 
-  // Sets the Past table's headings and adds the All / Rises / Falls filter above it.
   function setupPastControls() {
     const body = $("past-rows");
     const tbl = body.closest("table");
@@ -564,7 +530,7 @@
         const b = e.target.closest("[data-past]");
         if (!b) return;
         past.filter = b.dataset.past;
-        past.limit = PAGE;
+        past.limit = PAST_PAGE;
         bar.querySelectorAll("[data-past]").forEach((x) =>
           x.setAttribute("aria-selected", String(x.dataset.past === past.filter)),
         );
@@ -618,20 +584,34 @@
             : "No price changes recorded yet. Changes appear here as FPL makes them."
         }</td></tr>`;
 
-    moreBtn("more-past", body, list.length, past.limit, () => {
-      past.limit += PAGE;
-      renderPast();
-    });
+    const wrap = body.closest(".table-wrap");
+    let more = document.getElementById("more-past");
+    if (!more) {
+      const p = document.createElement("p");
+      more = document.createElement("button");
+      more.id = "more-past";
+      more.type = "button";
+      p.append(more);
+      wrap.after(p);
+      more.addEventListener("click", () => {
+        past.limit += PAST_PAGE;
+        renderPast();
+      });
+    }
+    const left = list.length - past.limit;
+    more.hidden = left <= 0;
+    more.textContent = `Show more (${Math.max(0, left)} left)`;
   }
 
   // ---------- Countdown ----------
   function startCountdown() {
+    const pad = (n) => String(n).padStart(2, "0");
     const tick = () => {
-      const ms = Math.max(0, nextChange(Date.now()) - Date.now());
-      const h = Math.floor(ms / 3600000);
-      const m = Math.floor((ms % 3600000) / 60000);
-      const s = Math.floor((ms % 60000) / 1000);
-      $("cd").textContent = `${h} hr ${String(m).padStart(2, "0")} min ${String(s).padStart(2, "0")} sec`;
+      const now = Date.now();
+      const ms = Math.max(0, nextChange(now) - now);
+      $("cd").textContent = `${pad(Math.floor(ms / 3600000))}:${pad(Math.floor((ms % 3600000) / 60000))}:${pad(
+        Math.floor((ms % 60000) / 1000),
+      )}`;
     };
     tick();
     setInterval(tick, 1000);
@@ -641,7 +621,7 @@
   function renderCurrent() {
     const now = Date.now();
     if (state.tab === "table") renderTable(now);
-    if (state.tab === "summary") renderSummary();
+    if (state.tab === "summary") renderSummary(now);
     if (state.tab === "trends") renderTrends();
     if (state.tab === "past") renderPast();
   }
@@ -651,7 +631,12 @@
     syncPriceMeta(now);
     updateRates(now);
     renderCurrent();
-    $("meta").textContent = `Updated ${new Date(snap.generatedAt).toLocaleString()}`;
+    const nextTime = new Date(nextChange(now)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    $("meta").textContent =
+      `Next price change at ${nextTime} (Local Time) · Last updated ${new Date(now).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })} · Updates every 15 minutes`;
   }
 
   // ---------- Wiring ----------
@@ -659,12 +644,14 @@
     state.tab = tab;
     document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
     for (const t of ["table", "summary", "trends", "past"]) $(`tab-${t}`).hidden = t !== tab;
+    const pager = document.getElementById("tbl-pager");
+    if (pager) pager.hidden = tab !== "table";
     renderCurrent();
     if (tab === "past") loadEvents();
   }
 
   const resetTable = () => {
-    state.limit = PAGE;
+    tablePage = 1;
     renderTable(Date.now());
   };
 
@@ -708,7 +695,7 @@
 
     $("pct").addEventListener("change", (e) => {
       state.pct = e.target.checked;
-      renderSummary();
+      renderSummary(Date.now());
     });
 
     $("rows").addEventListener("click", (e) => {
@@ -722,10 +709,9 @@
       if (state.sub === "watch") {
         renderTable(Date.now());
       } else {
-        const sa = starAttrs(id, watching);
-        btn.setAttribute("aria-pressed", sa.pressed);
-        btn.setAttribute("aria-label", sa.label);
-        btn.textContent = sa.glyph;
+        btn.setAttribute("aria-pressed", String(watching));
+        btn.setAttribute("aria-label", watching ? "Remove from watchlist" : "Add to watchlist");
+        btn.textContent = watching ? "★" : "☆";
       }
     });
 
