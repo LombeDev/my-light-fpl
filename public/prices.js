@@ -1,8 +1,8 @@
 /* prices.js: the Prices page, laid out like the official FPL price change table.
-   Progress is counted from each player's last price change, using the server's figures when available.
+   Once the server has rebuilt its transfer windows, progress comes only from the server, so players
+   who have already changed are not shown with stale figures. Before that, the local estimate is used.
    Status uses predicted progress: 95% or more is "Likely", 100% or more is "Very likely".
-   Players locked after a red-to-none flag change show no progress. Ten players per page.
-   Past changes and locks come from /api/prices/events. Starts on fpl:ready from app.js. */
+   Ten players per page. Past changes and locks come from /api/prices/events. Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "prices") return;
   const $ = (id) => document.getElementById(id);
@@ -17,7 +17,7 @@
 
   const OWN_FLOOR = 1.7;       // players below this ownership are left out of the general table
   const PRICE_HOUR_UTC = 0;    // 00:00 UTC = 02:00 CAT, the official change time
-  const SAMPLE_MIN = 15;       // progress is sampled every 15 minutes, as on the official site
+  const SAMPLE_MIN = 15;       // progress is sampled every 15 minutes
   const GW_MAX_STEPS = 3;      // at most £0.3m of movement per gameweek
 
   // Ownership tiers: [minOwnershipPct, riseThresholdNet, fallThresholdNet]
@@ -47,11 +47,12 @@
   let teamById = new Map();
   let posById = new Map();
   let byId = new Map();
-  let rates = {}; // player id -> progress change per hour (percentage points)
+  let rates = {};              // player id -> progress change per hour (percentage points)
   let watch = [];
   let mine = new Set();
-  let locks = new Map(); // player id -> lock end time in ms
-  let serverProgress = null; // player id -> progress %, counted since each player's last price change
+  let locks = new Map();       // player id -> lock end time in ms
+  let serverProgress = null;   // player id -> progress %, counted since each player's last price change
+  let serverReady = false;     // true once the server has sent rebuilt windows
   let tablePage = 1;
   const state = { tab: "table", sub: "all", list: "risers", pct: true };
 
@@ -78,7 +79,7 @@
     }
   };
 
-  // ---------- Price model ----------
+  // ---------- Price model (fallback only, used until the server's figures are ready) ----------
   const ownershipPct = (p) => {
     const v = Number(p.selected_by_percent);
     return Number.isFinite(v) ? v : 0;
@@ -142,11 +143,11 @@
   const readOfficialRate = (p) => numberFrom([p.rate_per_hour, p.hourly_progress, p.progress_per_hour]);
 
   // Positive = rising progress, negative = falling progress.
-  // A locked player shows no progress. Otherwise the server's figure is used when available, then the
-  // local estimate, which deducts transfers already used by earlier changes this gameweek.
+  // Once the server's figures are ready, they are the only source, so a player the server does not
+  // return shows no progress. Before that, the local estimate is used.
   function signedProgress(p) {
     if (isLocked(p)) return 0;
-    if (serverProgress && serverProgress[p.id] !== undefined) return serverProgress[p.id];
+    if (serverReady) return serverProgress[p.id] ?? 0;
 
     const official = readOfficialProgress(p);
     if (official !== null) return official;
@@ -382,7 +383,9 @@
         ? "Set your team first, by importing your squad in the Planner."
         : state.sub === "watch" && !watch.length
           ? "Press the star next to a player to add them here."
-          : "No players match.";
+          : serverReady
+            ? "No players are close to a change in this list right now."
+            : "Progress is still being calculated. It will appear after the next log.";
 
     $("rows").innerHTML = items.length
       ? items
@@ -511,15 +514,20 @@
   }
 
   // Server-side progress, counted from each player's last price change.
+  // An empty response means the server has not rebuilt its windows yet, so the local estimate stays in use.
   async function loadProgress() {
     try {
       const res = await fetch("/api/prices/progress");
       if (!res.ok) return;
       const data = await res.json();
-      serverProgress = data.progress ?? null;
+      const progress = data.progress ?? {};
+      if (Object.keys(progress).length) {
+        serverProgress = progress;
+        serverReady = true;
+      }
       renderCurrent();
     } catch {
-      // Keep the local estimate if the request fails
+      // Keep the current figures if the request fails
     }
   }
 
