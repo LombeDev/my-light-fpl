@@ -1,7 +1,7 @@
 /* prices.ts: records price, flag, net transfers and progress every two hours.
    Net transfers are counted from the start of each player's current price window (their last price change),
-   not from the start of the gameweek. Logs price changes, sets a one-week lock after a red-to-none flag
-   change, and scores the model's 95%+ alerts against the changes that happened.
+   and a window restarts at the moment a change is detected. Logs price changes, sets a one-week lock after
+   a red-to-none flag change, and scores the model's 95%+ alerts against the changes that happened.
    Keep TIERS and the flag multipliers in line with public/prices.js.
    Storage: pl:last (latest log), pl:events (recent changes), pl:score (accuracy counts). */
 import { json, type Bg, type Env, type Snapshot } from "./fpl";
@@ -14,6 +14,7 @@ const MAX_EVENTS = 300;
 const WEEK_MS = 7 * 24 * 60 * 60_000;
 const ALERT_PCT = 95; // progress at which the page says "Likely"
 const MAX_STEPS = 3; // at most £0.3m of movement per gameweek
+const LAYOUT = 2; // bump this to rebuild every player's transfer window
 
 // Ownership tiers: [minOwnershipPct, riseThresholdNet, fallThresholdNet], highest first.
 const TIERS: [number, number, number][] = [
@@ -41,6 +42,7 @@ type Flag = "n" | "a" | "r";
 type Row = [number, number, number, Flag, number, number, number];
 
 interface Last {
+  v?: number; // layout version; windows are rebuilt when this changes
   t: number;
   players: Record<string, Row>;
 }
@@ -114,6 +116,7 @@ async function logOnce(env: Env): Promise<void> {
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
   const withinWindow = !!last && nowMs - last.t <= WINDOW_MS;
+  const rebase = last?.v !== LAYOUT; // stored windows are from the old layout, so restart them
 
   const players: Record<string, Row> = {};
   const moves = new Map<number, 1 | -1>(); // players whose price changed since the last log
@@ -128,13 +131,13 @@ async function logOnce(env: Env): Promise<void> {
     let lockUntil = prev && prev.length >= 5 ? prev[4] : 0;
 
     // The window starts at the first sighting, and restarts at each price change.
-    let base = prev && prev.length >= 7 ? prev[6] : net;
+    let base = prev && prev.length >= 7 && !rebase ? prev[6] : net;
 
     if (prev) {
       if (prev[0] !== p.now_cost) {
         const dir: 1 | -1 = p.now_cost > prev[0] ? 1 : -1;
         moves.set(p.id, dir);
-        const prevWindow = prev.length >= 7 ? prev[1] - prev[6] : 0;
+        const prevWindow = prev.length >= 7 && !rebase ? prev[1] - prev[6] : 0;
         events.push({
           id: p.id,
           dir,
@@ -144,8 +147,8 @@ async function logOnce(env: Env): Promise<void> {
           own: prev[2],
           pred: prev.length >= 6 ? prev[5] : null,
         });
-        // A new window starts at the last log before the change.
-        base = prev[1];
+        // The new window starts now, so the transfers that caused this change are not counted.
+        base = net;
       }
 
       // Red flag straight to no flag: the price is locked for a week.
@@ -159,7 +162,7 @@ async function logOnce(env: Env): Promise<void> {
 
   // Score the previous log's 95%+ alerts against the changes in this log.
   // Only scored on change days, and only when the previous log is recent enough to be a fair forecast.
-  if (withinWindow && last && moves.size) {
+  if (withinWindow && last && moves.size && !rebase) {
     const score = (await env.FPL_KV.get<Score>("pl:score", "json")) ?? emptyScore();
 
     for (const [key, row] of Object.entries(last.players)) {
@@ -186,7 +189,7 @@ async function logOnce(env: Env): Promise<void> {
   if (moves.size) {
     await env.FPL_KV.put("pl:events", JSON.stringify(events.slice(-MAX_EVENTS)));
   }
-  await env.FPL_KV.put("pl:last", JSON.stringify({ t: nowMs, players } satisfies Last));
+  await env.FPL_KV.put("pl:last", JSON.stringify({ v: LAYOUT, t: nowMs, players } satisfies Last));
 }
 
 /** Starts a log in the background, at most once every two hours. */
@@ -197,7 +200,7 @@ export async function recordPrices(env: Env, bg: Bg): Promise<void> {
 
 /**
  * Progress for every player, from the current snapshot and each player's window base.
- * Uses fresh transfer figures, so it is more current than the two-hourly log.
+ * Until the windows are rebuilt under the current layout, nothing is sent and the page uses its estimate.
  */
 export async function priceProgress(env: Env): Promise<Response> {
   const snap = await env.FPL_KV.get<Snapshot>("snapshot", "json");
@@ -207,12 +210,16 @@ export async function priceProgress(env: Env): Promise<Response> {
   const now = Date.now();
   const progress: Record<string, number> = {};
 
-  for (const p of snap.players) {
-    const row = last?.players[String(p.id)];
-    if (!row || row.length < 7) continue; // no window yet, so the client falls back to its own estimate
-    const net = p.transfers_in - p.transfers_out;
-    const locked = row[4] > now;
-    progress[String(p.id)] = Math.round(modelPct(p, net - row[6], locked) * 10) / 10;
+  if (last?.v === LAYOUT) {
+    for (const p of snap.players) {
+      const row = last.players[String(p.id)];
+      if (!row || row.length < 7) continue;
+      const net = p.transfers_in - p.transfers_out;
+      // If the cost has changed since the last log, the window restarts from the current net figure.
+      const base = row[0] !== p.now_cost ? net : row[6];
+      const locked = row[4] > now;
+      progress[String(p.id)] = Math.round(modelPct(p, net - base, locked) * 10) / 10;
+    }
   }
 
   return new Response(JSON.stringify({ t: now, progress }), {
