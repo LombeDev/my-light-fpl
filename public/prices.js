@@ -1,5 +1,7 @@
 /* prices.js: countdown, price progress table, predictions, trends and past changes.
-   Lists show 25 at a time; search and filters run over every player. Starts on fpl:ready from app.js. */
+   Past changes come from the server log at /api/prices/events, so changes made while nobody had the
+   page open still appear. Lists show 25 at a time; search and filters run over every player.
+   Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "prices") return;
   const $ = (id) => document.getElementById(id);
@@ -9,6 +11,7 @@
   const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
   const signed1Pct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`;
   const PAGE = 25;
+  const EVENTS_EVERY_MS = 5 * 60_000;
 
   // Calibration settings aligned with official FPL & LiveFPL behavior.
   const OWN_FLOOR = 1.7; // players below 1.7% ownership are excluded unless searched by name
@@ -34,10 +37,17 @@
   let snap = null;
   let teamById = new Map();
   let posById = new Map();
+  let byId = new Map();
   let rates = {}; // player id -> progress change per hour (percentage points)
   let watch = [];
   let mine = new Set();
-  const state = { tab: "table", sub: "all", list: "risers", pct: true, limit: PAGE, pastLimit: PAGE };
+  const state = { tab: "table", sub: "all", list: "risers", pct: true, limit: PAGE };
+
+  // Logged price changes from the server, newest first.
+  let events = [];
+  let eventsLoaded = false;
+  let eventsError = null;
+  const past = { filter: "all", limit: PAGE };
 
   // ---------- Storage ----------
   const readJSON = (key, fallback) => {
@@ -503,31 +513,113 @@
     $("trends").innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Transfer trends">${bubbles}</svg>`;
   }
 
-  // ---------- Past Tab ----------
+  // ---------- Past Tab (logged price changes) ----------
+  async function loadEvents() {
+    try {
+      const res = await fetch("/api/prices/events");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      events = Array.isArray(data.events) ? data.events : [];
+      eventsError = null;
+    } catch (err) {
+      eventsError = err.message;
+    }
+    eventsLoaded = true;
+    if (state.tab === "past") renderPast();
+  }
+
+  // Sets the Past table's headings and adds the All / Rises / Falls filter above it.
+  function setupPastControls() {
+    const body = $("past-rows");
+    const tbl = body.closest("table");
+    if (!tbl) return;
+
+    const thead = tbl.querySelector("thead");
+    if (thead) {
+      thead.innerHTML = `<tr>
+        <th>Player</th>
+        <th>Club</th>
+        <th>Detected</th>
+        <th class="n">New price</th>
+        <th class="n">Move</th>
+      </tr>`;
+    }
+
+    if (!document.getElementById("past-filter")) {
+      const bar = document.createElement("div");
+      bar.id = "past-filter";
+      bar.innerHTML = [
+        ["all", "All"],
+        ["rise", "Rises"],
+        ["fall", "Falls"],
+      ]
+        .map(
+          ([k, l]) =>
+            `<button type="button" class="subtab" data-past="${k}" aria-selected="${past.filter === k}">${l}</button>`,
+        )
+        .join("");
+      tbl.closest(".table-wrap").before(bar);
+
+      bar.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-past]");
+        if (!b) return;
+        past.filter = b.dataset.past;
+        past.limit = PAGE;
+        bar.querySelectorAll("[data-past]").forEach((x) =>
+          x.setAttribute("aria-selected", String(x.dataset.past === past.filter)),
+        );
+        renderPast();
+      });
+    }
+  }
+
   function renderPast() {
-    const all = snap.players
-      .filter((p) => p.cost_change_start !== 0)
-      .sort((a, b) => Math.abs(b.cost_change_start) - Math.abs(a.cost_change_start));
+    setupPastControls();
+    const body = $("past-rows");
 
-    const rows = all
-      .slice(0, state.pastLimit)
-      .map((p) => {
-        const start = p.now_cost - p.cost_change_start;
-        const change = p.cost_change_start / 10;
-        return `<tr>
-          <td>${nameCell(p, false)}</td>
-          <td>${esc(teamById.get(p.team)?.short ?? "")}</td>
-          <td class="n">${money(start)}</td>
-          <td class="n">${money(p.now_cost)}</td>
-          <td class="n ${change >= 0 ? "up" : "down"}">${change >= 0 ? "+" : "−"}£${Math.abs(change).toFixed(1)}m</td>
-        </tr>`;
-      })
-      .join("");
+    if (!eventsLoaded) {
+      body.innerHTML = `<tr><td colspan="5">Loading price changes…</td></tr>`;
+      return;
+    }
+    if (eventsError) {
+      body.innerHTML = `<tr><td colspan="5">Could not load price changes. ${esc(eventsError)}</td></tr>`;
+      return;
+    }
 
-    $("past-rows").innerHTML = rows || `<tr><td colspan="5">No price changes this season yet.</td></tr>`;
+    const list = events.filter((e) =>
+      past.filter === "all" ? true : past.filter === "rise" ? e.dir === 1 : e.dir === -1,
+    );
+    const shown = list.slice(0, past.limit);
 
-    moreBtn("more-past", $("past-rows"), all.length, state.pastLimit, () => {
-      state.pastLimit += PAGE;
+    body.innerHTML = shown.length
+      ? shown
+          .map((e) => {
+            const p = byId.get(e.id);
+            const when = new Date(e.at)
+              .toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+              .replace(",", "");
+            const up = e.dir === 1;
+            const netStr = `${e.net >= 0 ? "+" : "−"}${Math.abs(e.net).toLocaleString()} net`;
+            const nameHtml = p
+              ? nameCell(p, false)
+              : `<div class="pl"><div class="pname">${esc(e.name)}</div></div>`;
+            return `<tr>
+              <td>${nameHtml}</td>
+              <td>${esc(e.club)}</td>
+              <td>${esc(when)}</td>
+              <td class="n">${money(e.cost)}</td>
+              <td class="n ${up ? "up" : "down"}">${up ? "Rise" : "Fall"}<div class="small muted">${esc(netStr)}</div></td>
+            </tr>`;
+          })
+          .join("")
+      : `<tr><td colspan="5">${
+          events.length
+            ? "No changes match this filter."
+            : "No price changes recorded yet. Changes appear here as FPL makes them."
+        }</td></tr>`;
+
+    moreBtn("more-past", body, list.length, past.limit, () => {
+      past.limit += PAGE;
       renderPast();
     });
   }
@@ -568,6 +660,7 @@
     document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
     for (const t of ["table", "summary", "trends", "past"]) $(`tab-${t}`).hidden = t !== tab;
     renderCurrent();
+    if (tab === "past") loadEvents();
   }
 
   const resetTable = () => {
@@ -579,6 +672,7 @@
     snap = s;
     teamById = new Map(snap.teams.map((t) => [t.id, t]));
     posById = new Map(snap.positions.map((p) => [p.id, p.short]));
+    byId = new Map(snap.players.map((p) => [p.id, p]));
     watch = readJSON(KEY_WATCH, []);
     mine = new Set(readJSON(KEY_BASE, []));
 
@@ -637,7 +731,9 @@
 
     startCountdown();
     refresh();
+    loadEvents();
     setInterval(refresh, 60_000);
+    setInterval(loadEvents, EVENTS_EVERY_MS);
   }
 
   document.addEventListener("fpl:ready", (e) => {
