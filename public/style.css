@@ -3568,3 +3568,122 @@ main > .mt-deadline {
     scroll-behavior: auto !important;
   }
 }
+
+
+
+  /* Rate my team: score, grade, best XI, squad and player list. Uses the site's colours. */
+.rt {
+  max-width: 760px;
+}
+.rt-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.rt-row input {
+  flex: 1;
+  min-width: 0;
+}
+.rt-section {
+  margin-top: 22px;
+}
+.rt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.rt-score {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+}
+.rt-num {
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.rt-letter {
+  font-size: 28px;
+  font-weight: 800;
+}
+.rt-issues {
+  margin: 8px 0;
+  padding-left: 20px;
+  color: #b3261e;
+  font-size: 14px;
+}
+.rt-xilist,
+.rt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rt-list li,
+.rt-xilist li {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 48px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--row, #eef0f3);
+}
+.rt-shirt {
+  width: 24px;
+  height: auto;
+}
+.rt-name {
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rt-pos,
+.rt-price,
+.rt-ep {
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+  font-variant-numeric: tabular-nums;
+}
+.rt-ep {
+  font-weight: 700;
+  color: var(--text, #111);
+}
+.rt-cap {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #111;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  vertical-align: middle;
+}
+.rt-filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.rt-empty {
+  padding: 14px;
+  color: var(--muted, #6b7280);
+  border: 1px dashed var(--border, #d7dbe2);
+  border-radius: 10px;
+}
+@media (min-width: 600px) {
+  .rt-filters {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+}
