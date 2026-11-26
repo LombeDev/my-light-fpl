@@ -1,7 +1,7 @@
-/* planner.js: Fixture difficulty grid. Teams run down the side and gameweeks across.
-   Each fixture uses FPL's difficulty rating (1 easiest to 5 hardest). Rank is our own:
-   teams are ordered by their average difficulty across the gameweeks shown, easiest first.
-   Uppercase means home, lowercase means away. Starts on fpl:ready from app.js. */
+/* planner.js: FPL fixture difficulty grid. Teams run down the side, gameweeks run across.
+   Each fixture uses FPL's difficulty (1 easiest to 5 hardest). Uppercase means home, lowercase away
+   in the simple view. Rank is our own: teams are ordered by average difficulty over the gameweeks shown.
+   Starts on fpl:ready from app.js. */
 (() => {
   if (document.body.dataset.page !== "planner") return;
   const $ = (id) => document.getElementById(id);
@@ -9,19 +9,29 @@
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const SPAN = 10; // most gameweeks shown at once
 
-  const state = { view: "simple", from: 1, to: SPAN, sort: "rank" };
+  const state = { view: "detailed", from: 1, to: SPAN, sort: "rank", deadlines: true, ko: true };
   let snap = null;
   let teamById = new Map();
+  let eventById = new Map();
   let maxGw = 38;
-  let currentGw = 1;
 
-  const diffClass = (d) => `fd-d${Math.min(5, Math.max(1, Math.round(d)))}`;
+  const clampDiff = (d) => Math.min(5, Math.max(1, Math.round(Number(d)) || 3));
 
-  const shirt = (team) =>
-    team?.code ? `<img class="fd-shirt" src="${SHIRTS}/shirt_${team.code}-66.png" alt="" loading="lazy">` : "";
+  // "Sun 29 Nov 6:30 pm" or "Sun 29 Nov", in the visitor's time zone.
+  function fmtDate(iso, withTime) {
+    if (!iso) return "TBC";
+    const opts = { weekday: "short", day: "numeric", month: "short" };
+    if (withTime) Object.assign(opts, { hour: "numeric", minute: "2-digit" });
+    return new Date(iso).toLocaleString("en-GB", opts).replace(/,/g, "");
+  }
 
-  // Fixtures for each team and gameweek inside the chosen range, keyed "teamId:gw".
-  function fixtureIndex() {
+  function fmtTime(iso) {
+    if (!iso) return "";
+    return new Date(iso).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
+  }
+
+  // "team:gw" -> fixtures for that team in that gameweek, sorted by kickoff.
+  function fixtureIndex(from, to) {
     const map = new Map();
     const add = (team, gw, entry) => {
       const key = `${team}:${gw}`;
@@ -29,30 +39,32 @@
       map.get(key).push(entry);
     };
     for (const f of snap.fixtures) {
-      if (f.gw === null || f.gw < state.from || f.gw > state.to) continue;
-      add(f.home, f.gw, { opp: f.away, home: true, diff: f.home_difficulty });
-      add(f.away, f.gw, { opp: f.home, home: false, diff: f.away_difficulty });
+      if (f.gw === null || f.gw < from || f.gw > to) continue;
+      add(f.home, f.gw, { opp: f.away, home: true, diff: f.home_difficulty, kick: f.kickoff });
+      add(f.away, f.gw, { opp: f.home, home: false, diff: f.away_difficulty, kick: f.kickoff });
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.kick ?? "~").localeCompare(b.kick ?? "~"));
     }
     return map;
   }
 
-  // One row per team, with its rank and its cells, sorted by the chosen column.
-  function buildRows(gws) {
-    const index = fixtureIndex();
+  // One row per team, with its cells and average difficulty. Rank 1 is the easiest average.
+  function buildRows(gws, index) {
     const rows = snap.teams.map((team) => {
-      const cells = gws.map((g) => index.get(`${team.id}:${g}`) ?? []);
       let total = 0;
       let count = 0;
-      for (const list of cells) {
+      const cells = gws.map((g) => {
+        const list = index.get(`${team.id}:${g}`) ?? [];
         for (const x of list) {
-          total += x.diff;
+          total += clampDiff(x.diff);
           count += 1;
         }
-      }
+        return list;
+      });
       return { team, cells, avg: count ? total / count : null, rank: null };
     });
 
-    // Rank: easiest average first. Teams with no fixtures in range are not ranked.
     rows
       .filter((r) => r.avg !== null)
       .sort((a, b) => a.avg - b.avg || a.team.name.localeCompare(b.team.name))
@@ -61,76 +73,102 @@
       });
 
     if (state.sort === "team") {
-      return rows.sort((a, b) => a.team.name.localeCompare(b.team.name));
+      rows.sort((a, b) => a.team.name.localeCompare(b.team.name));
+    } else {
+      rows.sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || a.team.name.localeCompare(b.team.name));
     }
-    return rows.sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || a.team.name.localeCompare(b.team.name));
+    return rows;
   }
 
-  function cellHtml(list) {
-    if (!list.length) {
-      return `<td class="fd-cell"><span class="fd-pill fd-blank">–</span></td>`;
+  // One fixture block. Simple shows the opponent, Detailed adds difficulty, venue and the date.
+  function pill(x) {
+    const cls = `fx-d${clampDiff(x.diff)}`;
+    const short = teamById.get(x.opp)?.short ?? "";
+
+    if (state.view === "simple") {
+      const label = x.home ? short.toUpperCase() : short.toLowerCase();
+      const time = state.ko && x.kick ? `<small>${esc(fmtTime(x.kick))}</small>` : "";
+      return `<div class="fx-pill ${cls}"><b>${esc(label)}</b>${time}</div>`;
     }
-    const pills = list
-      .map((x) => {
-        const short = teamById.get(x.opp)?.short ?? "";
-        const label = x.home ? short.toUpperCase() : short.toLowerCase();
-        const cls = diffClass(x.diff);
-        if (state.view === "detailed") {
-          return `<span class="fd-pill ${cls}"><b>${esc(label)}</b><small>${x.home ? "H" : "A"} · ${x.diff}</small></span>`;
-        }
-        return `<span class="fd-pill ${cls}">${esc(label)}</span>`;
+
+    const label = short.toUpperCase();
+    const when = fmtDate(x.kick, state.ko);
+    return `<div class="fx-pill ${cls}"><b>${esc(label)}(${clampDiff(x.diff)},${x.home ? "H" : "A"})</b><small>${esc(when)}</small></div>`;
+  }
+
+  function cell(list) {
+    if (!list.length) {
+      return `<td class="fx-cell"><div class="fx-stack"><div class="fx-pill fx-blank">Blank</div></div></td>`;
+    }
+    return `<td class="fx-cell"><div class="fx-stack">${list.map(pill).join("")}</div></td>`;
+  }
+
+  function shirt(team) {
+    return team?.code
+      ? `<img class="fx-shirt" src="${SHIRTS}/shirt_${team.code}-66.png" alt="" loading="lazy">`
+      : "";
+  }
+
+  function headHtml(gws) {
+    const sortBtn = (key, label) =>
+      `<button type="button" class="fx-sort" data-sort="${key}">${label}${state.sort === key ? " ▲" : ""}</button>`;
+
+    const gwCols = gws
+      .map((g) => {
+        const ev = eventById.get(g);
+        const dl =
+          state.deadlines && ev?.deadline_time
+            ? `<span class="fx-gwdl">${esc(fmtDate(ev.deadline_time, true))}</span>`
+            : "";
+        return `<th scope="col" class="fx-gw"><span class="fx-gwname">GW ${g}</span>${dl}</th>`;
       })
       .join("");
-    return `<td class="fd-cell">${pills}</td>`;
-  }
 
-  function renderHead(gws) {
-    const sortBtn = (key, label) =>
-      `<button type="button" class="fd-sort" data-sort="${key}" aria-pressed="${state.sort === key}">${label}${
-        state.sort === key ? " ↓" : ""
-      }</button>`;
-    $("fd-head").innerHTML = `<tr>
-      <th scope="col" class="fd-team">${sortBtn("team", "Team")}</th>
-      <th scope="col" class="fd-rank">${sortBtn("rank", "Rank")}</th>
-      ${gws.map((g) => `<th scope="col" class="fd-gw">GW${g}</th>`).join("")}
+    return `<tr>
+      <th scope="col" class="fx-team">${sortBtn("team", "Team")}</th>
+      <th scope="col" class="fx-rank">${sortBtn("rank", "Rank")}</th>
+      ${gwCols}
     </tr>`;
   }
 
-  function renderBody(gws) {
-    const rows = buildRows(gws);
-    $("fd-body").innerHTML = rows
+  function bodyHtml(rows) {
+    return rows
       .map((r) => {
-        const rank =
-          r.rank === null
-            ? `<span class="fd-rankno">–</span>`
-            : `<span class="fd-rankno">${r.rank}</span><small class="fd-avg">${r.avg.toFixed(2)}</small>`;
+        const rankCls = r.rank !== null && r.rank <= 10 ? "fx-rank-hi" : "fx-rank-lo";
+        const rankText = r.rank === null ? "–" : String(r.rank);
+        const title = r.avg === null ? "" : `Average difficulty ${r.avg.toFixed(2)}`;
         return `<tr>
-          <th scope="row" class="fd-team">
-            <div class="fd-teamcell">${shirt(r.team)}<span>${esc(r.team.name)}</span></div>
+          <th scope="row" class="fx-team">
+            <div class="fx-teamcell">${shirt(r.team)}<span>${esc(r.team.short)}</span></div>
           </th>
-          <td class="fd-rank">${rank}</td>
-          ${r.cells.map(cellHtml).join("")}
+          <td class="fx-rank ${rankCls}" title="${esc(title)}"><span class="fx-rankno">${rankText}</span></td>
+          ${r.cells.map(cell).join("")}
         </tr>`;
       })
       .join("");
   }
 
-  function renderControls() {
+  function syncControls() {
     document.querySelectorAll("[data-view]").forEach((b) => {
       b.setAttribute("aria-pressed", String(b.dataset.view === state.view));
     });
-    $("fd-from").value = String(state.from);
-    $("fd-to").value = String(state.to);
+    $("fx-deadlines").checked = state.deadlines;
+    $("fx-ko").checked = state.ko;
+    $("fx-from").value = String(state.from);
+    $("fx-to").value = String(state.to);
   }
 
   function render() {
     const gws = [];
     for (let g = state.from; g <= state.to; g++) gws.push(g);
-    renderControls();
-    renderHead(gws);
-    renderBody(gws);
-    $("fd-note").textContent =
-      `Showing gameweeks ${state.from} to ${state.to}. Rank orders teams by average difficulty over these gameweeks, easiest first.`;
+    const rows = buildRows(gws, fixtureIndex(state.from, state.to));
+
+    $("fx-table").classList.toggle("is-simple", state.view === "simple");
+    $("fx-head").innerHTML = headHtml(gws);
+    $("fx-body").innerHTML = bodyHtml(rows);
+    syncControls();
+    $("fx-note").textContent =
+      `Gameweeks ${state.from} to ${state.to}. Rank 1 has the easiest fixtures on average over these gameweeks.`;
   }
 
   // Keeps the range valid: start before end, and no more than SPAN gameweeks.
@@ -148,9 +186,9 @@
 
   function fillRange() {
     const options = [];
-    for (let g = 1; g <= maxGw; g++) options.push(`<option value="${g}">GW${g}</option>`);
-    $("fd-from").innerHTML = options.join("");
-    $("fd-to").innerHTML = options.join("");
+    for (let g = 1; g <= maxGw; g++) options.push(`<option value="${g}">GW ${g}</option>`);
+    $("fx-from").innerHTML = options.join("");
+    $("fx-to").innerHTML = options.join("");
   }
 
   function wire() {
@@ -161,16 +199,25 @@
       }),
     );
 
-    $("fd-from").addEventListener("change", (e) => {
+    $("fx-deadlines").addEventListener("change", (e) => {
+      state.deadlines = e.target.checked;
+      render();
+    });
+    $("fx-ko").addEventListener("change", (e) => {
+      state.ko = e.target.checked;
+      render();
+    });
+
+    $("fx-from").addEventListener("change", (e) => {
       setFrom(Number(e.target.value));
       render();
     });
-    $("fd-to").addEventListener("change", (e) => {
+    $("fx-to").addEventListener("change", (e) => {
       setTo(Number(e.target.value));
       render();
     });
 
-    $("fd-head").addEventListener("click", (e) => {
+    $("fx-head").addEventListener("click", (e) => {
       const btn = e.target.closest("[data-sort]");
       if (!btn) return;
       state.sort = btn.dataset.sort;
@@ -182,10 +229,12 @@
     if (!e.detail) return;
     snap = e.detail;
     teamById = new Map(snap.teams.map((t) => [t.id, t]));
+    eventById = new Map(snap.events.map((ev) => [ev.id, ev]));
     maxGw = snap.events.length || 38;
-    currentGw = (snap.events.find((ev) => ev.current) ?? snap.events.find((ev) => ev.next))?.id ?? 1;
 
-    state.from = Math.min(currentGw, maxGw);
+    const current =
+      (snap.events.find((ev) => ev.current) ?? snap.events.find((ev) => ev.next))?.id ?? 1;
+    state.from = Math.min(current, maxGw);
     state.to = Math.min(maxGw, state.from + SPAN - 1);
 
     fillRange();
