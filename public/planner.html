@@ -1,13 +1,14 @@
-<!doctype html>
+
+  <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Planner · FPL</title>
-  <meta name="description" content="Fantasy Premier League season ticker and fixtures.">
+  <title>Fixture difficulty · FPL</title>
+  <meta name="description" content="Fantasy Premier League fixture difficulty grid. Compare teams across gameweeks, with each fixture coloured by difficulty.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
-    <script src="/menu.js" defer></script>
+   <script src="/menu.js" defer></script>
   <script src="/planner.js" defer></script>
 </head>
 <body data-page="planner">
@@ -16,44 +17,51 @@
     <nav id="nav" aria-label="Main"></nav>
   </header>
 
-  <main>
-    <h1>Planner</h1>
+  <main class="fd">
+    <h1>Fixture difficulty</h1>
+    <p class="fd-intro">Plan transfers and captains with a grid of every team's fixtures. Each fixture is coloured by its difficulty, from 1 (easiest) to 5 (hardest).</p>
 
-    <section>
-      <div class="ticker-head">
-        <h2>Season ticker</h2>
-        <div class="stepper">
-          <span class="label">Gameweeks</span>
-          <button id="gw-minus" type="button" aria-label="Fewer gameweeks">−</button>
-          <strong id="gw-count">5</strong>
-          <button id="gw-plus" type="button" aria-label="More gameweeks">+</button>
+    <section class="fd-controls" aria-label="Grid options">
+      <div class="fd-group">
+        <span class="fd-label" id="fd-view-label">View</span>
+        <div class="fd-seg" role="group" aria-labelledby="fd-view-label">
+          <button type="button" data-view="simple" aria-pressed="true">Simple</button>
+          <button type="button" data-view="detailed" aria-pressed="false">Detailed</button>
         </div>
       </div>
 
-      <div class="tk-wrap">
-        <table class="tk">
-          <thead id="tk-head"></thead>
-          <tbody id="tk-body"></tbody>
-        </table>
+      <div class="fd-group">
+        <span class="fd-label" id="fd-gw-label">Gameweeks</span>
+        <div class="fd-range" role="group" aria-labelledby="fd-gw-label">
+          <label class="sr-only" for="fd-from">From gameweek</label>
+          <select id="fd-from"></select>
+          <span aria-hidden="true">to</span>
+          <label class="sr-only" for="fd-to">To gameweek</label>
+          <select id="fd-to"></select>
+        </div>
+        <p class="fd-hint">Up to 10 gameweeks at a time.</p>
       </div>
-      <p class="meta">Each cell shows the opponent and venue. Uppercase is home, lowercase is away. Colours follow FPL's difficulty rating.</p>
     </section>
 
-    <section>
-      <div class="ticker-head">
-        <h2>Fixtures</h2>
-        <div class="stepper">
-          <button id="fx-prev" type="button" aria-label="Previous gameweek">‹</button>
-          <strong id="fx-gw">Gameweek</strong>
-          <button id="fx-next" type="button" aria-label="Next gameweek">›</button>
-        </div>
-      </div>
-      <div id="fx-list"></div>
-    </section>
+    <ul class="fd-legend" aria-label="Colour key">
+      <li><span class="fd-swatch fd-d1"></span>1 very easy</li>
+      <li><span class="fd-swatch fd-d2"></span>2 easy</li>
+      <li><span class="fd-swatch fd-d3"></span>3 average</li>
+      <li><span class="fd-swatch fd-d4"></span>4 hard</li>
+      <li><span class="fd-swatch fd-d5"></span>5 very hard</li>
+      <li><span class="fd-swatch fd-blank"></span>blank</li>
+    </ul>
+
+    <div class="fd-wrap">
+      <table class="fd-table">
+        <thead id="fd-head"></thead>
+        <tbody id="fd-body"></tbody>
+      </table>
+    </div>
+
+    <p class="fd-note" id="fd-note"></p>
   </main>
 
-  <footer>
-    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
-  </footer>
+ 
 </body>
 </html>
