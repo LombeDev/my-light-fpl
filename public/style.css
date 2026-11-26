@@ -4452,3 +4452,127 @@ main > .mt-deadline {
     background: rgba(255, 255, 255, 0.15);
   }
 }
+
+
+
+/* Rate my team: score card in the reference's style. White card, blue ring and grade ladder, red action button. */
+.rt-stage {
+  padding: 12px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #4fa86a 0%, #3c9a5a 100%);
+}
+.rt-score {
+  display: grid;
+  grid-template-columns: 110px auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 18px 18px 18px 22px;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #111;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  position: relative;
+}
+.rt-score::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 14px 0 0 14px;
+  background: #1d6fa3;
+}
+.rt-ring {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 8px solid #cfe4ef;
+  box-shadow: inset 0 0 0 4px #eef6fb;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #1d6fa3;
+}
+.rt-ring span {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.rt-ring small {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+}
+.rt-ladder {
+  display: grid;
+  border: 1px solid #d5d9df;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.rt-ladder span {
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #6b7280;
+  text-align: center;
+  border-top: 1px solid #eef0f3;
+}
+.rt-ladder span:first-child {
+  border-top: 0;
+}
+.rt-ladder span.is-on {
+  background: #1d6fa3;
+  color: #fff;
+  font-size: 16px;
+}
+.rt-text {
+  min-width: 0;
+}
+.rt-score .rt-msg {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #1f2937;
+}
+.rt-cta {
+  margin-top: 10px;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: #c1124b;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 2px 6px rgba(193, 18, 75, 0.3);
+}
+.rt-cta:hover {
+  background: #a50f40;
+}
+.rt-cta:focus-visible {
+  outline: 2px solid #1d6fa3;
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .rt-score {
+    grid-template-columns: 84px auto minmax(0, 1fr);
+    gap: 10px;
+    padding: 14px 14px 14px 18px;
+  }
+  .rt-ring {
+    width: 84px;
+    height: 84px;
+    border-width: 6px;
+  }
+  .rt-ring span {
+    font-size: 26px;
+  }
+}
