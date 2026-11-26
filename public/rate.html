@@ -16,64 +16,121 @@
   </header>
 
   <main class="rt">
-    <h1>Rate my team</h1>
-    <p class="meta">Import your squad with your team ID, or build one by hand. Your team is scored against the best possible starting XI for this gameweek, using expected points.</p>
-
-    <section class="rt-import" aria-labelledby="rt-import-h">
-      <h2 id="rt-import-h">Import your team</h2>
-      <form id="rt-form" class="rt-row">
-        <label class="sr-only" for="rt-id">FPL team ID</label>
-        <input id="rt-id" inputmode="numeric" placeholder="FPL team ID" autocomplete="off">
-        <button type="submit">Import</button>
-      </form>
-      <p class="meta" id="rt-msg" role="status"></p>
-    </section>
-
-    <section class="rt-score" aria-live="polite">
-      <div class="rt-grade">
-        <div class="rt-num" id="rt-num">–</div>
-        <div class="small muted">out of 99</div>
-      </div>
-      <div class="rt-detail">
-        <div class="rt-letter" id="rt-letter">–</div>
-        <p id="rt-summary" class="meta"></p>
-      </div>
-    </section>
-
-    <section class="rt-section" aria-labelledby="rt-xi-h">
-      <h2 id="rt-xi-h">Best starting XI</h2>
-      <p class="meta" id="rt-formation"></p>
-      <div id="rt-xi"></div>
-    </section>
-
-    <section class="rt-section" aria-labelledby="rt-squad-h">
-      <div class="rt-head">
-        <h2 id="rt-squad-h">Your squad <span id="rt-count">0/15</span></h2>
-        <button type="button" id="rt-clear">Clear</button>
-      </div>
-      <p class="meta">Value: <strong id="rt-value">£0.0m</strong></p>
-      <ul class="rt-issues" id="rt-issues"></ul>
-      <div id="rt-squad"></div>
-    </section>
-
-    <section class="rt-section" aria-labelledby="rt-add-h">
-      <h2 id="rt-add-h">Add players</h2>
-      <div class="rt-filters">
-        <label class="sr-only" for="rt-q">Search players by name</label>
-        <input id="rt-q" type="search" placeholder="Search by name">
-        <label class="sr-only" for="rt-pos">Filter by position</label>
-        <select id="rt-pos">
-          <option value="0">All positions</option>
-          <option value="1">Goalkeepers</option>
-          <option value="2">Defenders</option>
-          <option value="3">Midfielders</option>
-          <option value="4">Forwards</option>
+    <div class="rt-top">
+      <h1>Rate my team</h1>
+      <div class="rt-chip">
+        <label for="rt-chip">Playing a chip?</label>
+        <select id="rt-chip">
+          <option value="standard">Not playing a chip</option>
+          <option value="tc">Triple Captain</option>
         </select>
-        <label class="sr-only" for="rt-club">Filter by club</label>
-        <select id="rt-club"><option value="0">All clubs</option></select>
       </div>
-      <div id="rt-list"></div>
-    </section>
+    </div>
+    <p class="rt-sub">Rating for the current gameweek, out of 99, against the best possible starting XI.</p>
+
+    <div class="rt-layout">
+      <section class="rt-left" aria-label="Your team">
+        <div class="rt-score">
+          <div class="rt-ring" aria-live="polite">
+            <span id="rt-num">0</span><small>/99</small>
+          </div>
+          <div class="rt-ladder" aria-hidden="true">
+            <span data-g="S">S</span><span data-g="A">A</span><span data-g="B">B</span><span data-g="C">C</span><span data-g="F">F</span>
+          </div>
+          <p class="rt-msg" id="rt-msg" role="status"></p>
+        </div>
+
+        <div class="rt-pitch-wrap">
+          <button type="button" class="rt-import-btn" id="rt-import-btn" aria-expanded="false" aria-controls="rt-import">Import</button>
+          <form class="rt-import" id="rt-import" hidden>
+            <label for="rt-id">FPL team ID</label>
+            <div class="rt-import-row">
+              <input id="rt-id" inputmode="numeric" placeholder="1234567" autocomplete="off">
+              <button type="submit">Import</button>
+            </div>
+            <a href="https://fantasy.premierleague.com/" target="_blank" rel="noopener">Find your FPL team ID</a>
+            <p class="rt-msg" id="rt-import-msg" role="status"></p>
+          </form>
+
+          <div class="rt-pitch" id="rt-pitch">
+            <div class="rt-row" id="rt-row-1"></div>
+            <div class="rt-row" id="rt-row-2"></div>
+            <div class="rt-row" id="rt-row-3"></div>
+            <div class="rt-row" id="rt-row-4"></div>
+          </div>
+          <button type="button" class="rt-reset" id="rt-reset">Reset</button>
+        </div>
+
+        <div class="rt-foot">
+          <div>
+            <span class="rt-foot-label">Squad value</span>
+            <strong id="rt-value">£0.0m</strong>
+          </div>
+          <div>
+            <span class="rt-foot-label">Expected points, this GW</span>
+            <strong id="rt-xpts">–</strong>
+          </div>
+        </div>
+
+        <ul class="rt-issues" id="rt-issues"></ul>
+
+        <div class="rt-best" id="rt-best"></div>
+      </section>
+
+      <section class="rt-right" aria-label="Player list">
+        <div class="rt-filters">
+          <div class="rt-search">
+            <label class="sr-only" for="rt-q">Search players by name</label>
+            <input id="rt-q" type="search" placeholder="Search by name">
+          </div>
+          <div class="rt-pills" role="group" aria-label="Filter by position">
+            <button type="button" data-pos="0" aria-pressed="true">All</button>
+            <button type="button" data-pos="1" aria-pressed="false">GK</button>
+            <button type="button" data-pos="2" aria-pressed="false">DEF</button>
+            <button type="button" data-pos="3" aria-pressed="false">MID</button>
+            <button type="button" data-pos="4" aria-pressed="false">FWD</button>
+          </div>
+          <div class="rt-team">
+            <label class="sr-only" for="rt-team">Filter by club</label>
+            <select id="rt-team"><option value="0">All teams</option></select>
+          </div>
+          <button type="button" class="rt-clear" id="rt-clear">Clear squad</button>
+        </div>
+
+        <div class="rt-sliders">
+          <fieldset class="rt-range">
+            <legend>Price <span id="rt-price-label">£3.8 – £15.8</span></legend>
+            <label class="sr-only" for="rt-pmin">Minimum price</label>
+            <input id="rt-pmin" type="range" min="38" max="158" step="1" value="38">
+            <label class="sr-only" for="rt-pmax">Maximum price</label>
+            <input id="rt-pmax" type="range" min="38" max="158" step="1" value="158">
+          </fieldset>
+          <fieldset class="rt-range">
+            <legend>Ownership <span id="rt-own-label">0% – 100%</span></legend>
+            <label class="sr-only" for="rt-omin">Minimum ownership</label>
+            <input id="rt-omin" type="range" min="0" max="100" step="1" value="0">
+            <label class="sr-only" for="rt-omax">Maximum ownership</label>
+            <input id="rt-omax" type="range" min="0" max="100" step="1" value="100">
+          </fieldset>
+        </div>
+
+        <div class="rt-table-wrap">
+          <table class="rt-table">
+            <thead>
+              <tr>
+                <th scope="col">Player</th>
+                <th scope="col" class="n">£</th>
+                <th scope="col" class="n">Own</th>
+                <th scope="col" class="n">XPTS</th>
+                <th scope="col"><span class="sr-only">Add or remove</span></th>
+              </tr>
+            </thead>
+            <tbody id="rt-rows"></tbody>
+          </table>
+        </div>
+        <p class="rt-note" id="rt-count"></p>
+      </section>
+    </div>
   </main>
 
   <footer>
