@@ -40,25 +40,27 @@
           <p class="rt-msg" id="rt-msg" role="status"></p>
         </div>
 
-        <div class="rt-pitch-wrap">
-          <button type="button" class="rt-import-btn" id="rt-import-btn" aria-expanded="false" aria-controls="rt-import">Import</button>
-          <form class="rt-import" id="rt-import" hidden>
-            <label for="rt-id">FPL team ID</label>
-            <div class="rt-import-row">
-              <input id="rt-id" inputmode="numeric" placeholder="1234567" autocomplete="off">
-              <button type="submit">Import</button>
-            </div>
-            <a href="https://fantasy.premierleague.com/" target="_blank" rel="noopener">Find your FPL team ID</a>
-            <p class="rt-msg" id="rt-import-msg" role="status"></p>
-          </form>
+        <div class="rtp-toolbar">
+          <button type="button" class="rtp-btn" id="rt-import-btn" aria-expanded="false" aria-controls="rt-import">Import team</button>
+          <button type="button" class="rtp-btn rtp-btn-ghost" id="rt-reset">Reset</button>
+          <p class="rtp-toast" id="rt-toast" role="status" hidden></p>
+        </div>
 
-          <div class="rt-pitch" id="rt-pitch">
-            <div class="rt-row" id="rt-row-1"></div>
-            <div class="rt-row" id="rt-row-2"></div>
-            <div class="rt-row" id="rt-row-3"></div>
-            <div class="rt-row" id="rt-row-4"></div>
+        <form class="rtp-import" id="rt-import" hidden>
+          <label for="rt-id">FPL team ID</label>
+          <div class="rtp-import-row">
+            <input id="rt-id" inputmode="numeric" placeholder="1234567" autocomplete="off">
+            <button type="submit" class="rtp-btn">Import</button>
           </div>
-          <button type="button" class="rt-reset" id="rt-reset">Reset</button>
+          <a href="https://fantasy.premierleague.com/" target="_blank" rel="noopener">Find your FPL team ID</a>
+          <p class="rt-msg" id="rt-import-msg" role="status"></p>
+        </form>
+
+        <div class="rtp-pitch">
+          <span class="rtp-box rtp-box-top" aria-hidden="true"></span>
+          <span class="rtp-box rtp-box-bot" aria-hidden="true"></span>
+          <span class="rtp-circle" aria-hidden="true"></span>
+          <div class="rtp-tokens" id="rt-tokens"></div>
         </div>
 
         <div class="rt-foot">
