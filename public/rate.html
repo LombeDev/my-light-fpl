@@ -30,14 +30,19 @@
 
     <div class="rt-layout">
       <section class="rt-left" aria-label="Your team">
-        <div class="rt-score">
-          <div class="rt-ring" aria-live="polite">
-            <span id="rt-num">0</span><small>/99</small>
+        <div class="rt-stage">
+          <div class="rt-score">
+            <div class="rt-ring" aria-live="polite">
+              <span id="rt-num">0</span><small>/99</small>
+            </div>
+            <div class="rt-ladder" aria-hidden="true">
+              <span data-g="S">S</span><span data-g="A">A</span><span data-g="B">B</span><span data-g="C">C</span><span data-g="F">F</span>
+            </div>
+            <div class="rt-text">
+              <p class="rt-msg" id="rt-msg" role="status"></p>
+              <button type="button" class="rt-cta" id="rt-cta">Import your team</button>
+            </div>
           </div>
-          <div class="rt-ladder" aria-hidden="true">
-            <span data-g="S">S</span><span data-g="A">A</span><span data-g="B">B</span><span data-g="C">C</span><span data-g="F">F</span>
-          </div>
-          <p class="rt-msg" id="rt-msg" role="status"></p>
         </div>
 
         <div class="rtp-toolbar">
@@ -76,7 +81,7 @@
 
         <ul class="rt-issues" id="rt-issues"></ul>
 
-        
+        <div class="rt-best" id="rt-best"></div>
       </section>
 
       <section class="rt-right" aria-label="Player list">
@@ -135,6 +140,8 @@
     </div>
   </main>
 
- 
+  <footer>
+    Data from the official Fantasy Premier League API. Ratings are our own estimates. Not affiliated with the Premier League.
+  </footer>
 </body>
 </html>
