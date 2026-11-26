@@ -4832,3 +4832,336 @@ main > .mt-deadline {
     text-overflow: ellipsis;
   }
 }
+
+
+
+/* FPL fixture difficulty, matched to the reference layout. Uses the fx- prefix so it does not clash with the older fd- styles. */
+.fx {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.fx h1 {
+  color: #c8184a;
+  margin-bottom: 6px;
+}
+.fx-intro {
+  margin: 0 0 16px;
+  color: var(--muted, #5b6470);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Options panel */
+.fx-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 18px 28px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.fx-group {
+  display: grid;
+  gap: 8px;
+}
+.fx-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #6b7280);
+}
+.fx-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+
+/* Segmented control: Simple and Detailed */
+.fx-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--row, #eef0f3);
+}
+.fx-seg button {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted, #4b5563);
+  font-weight: 600;
+}
+.fx-seg button[aria-pressed="true"] {
+  background: var(--surface, #fff);
+  color: var(--text, #111);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* Switches */
+.fx-switch {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  border-radius: 999px;
+  background: #cfd4da;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.fx-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+}
+.fx-switch:checked {
+  background: #3a3f46;
+}
+.fx-switch:checked::after {
+  transform: translateX(20px);
+}
+.fx-switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Gameweek range */
+.fx-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.fx-range select {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong, #cfd4dc);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text, #111);
+}
+
+/* Legend */
+.fx-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--muted, #5b6470);
+}
+.fx-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.fx-sw {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+/* Difficulty colours, fixed so the key always reads the same. */
+.fx-d1 { background: #0f7a43; color: #ffffff; }
+.fx-d2 { background: #7fcc8c; color: #0b2e18; }
+.fx-d3 { background: #f7eca6; color: #3b3210; }
+.fx-d4 { background: #ee9a9e; color: #4a0a12; }
+.fx-d5 { background: #d13b43; color: #ffffff; }
+.fx-blank {
+  background: #f1f2f4;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+/* Grid. White gaps between fixtures match the reference. */
+.fx-wrap {
+  max-height: 72vh;
+  overflow: auto;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.fx-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.fx-table th,
+.fx-table td {
+  padding: 0;
+  border-right: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+  vertical-align: middle;
+}
+.fx-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 10px 6px;
+  background: var(--surface, #fff);
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  white-space: nowrap;
+}
+.fx-gwname {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text, #111);
+}
+.fx-gwdl {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted, #6b7280);
+}
+.fx-sort {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Sticky team and rank columns */
+.fx-team {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 112px;
+  min-width: 112px;
+  padding: 0 10px !important;
+  background: var(--surface, #fff);
+  text-align: left;
+}
+.fx-table thead .fx-team {
+  z-index: 4;
+}
+.fx-teamcell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text, #111);
+  text-transform: uppercase;
+}
+.fx-shirt {
+  width: 22px;
+  height: auto;
+  flex-shrink: 0;
+}
+.fx-rank {
+  position: sticky;
+  left: 112px;
+  z-index: 2;
+  width: 72px;
+  min-width: 72px;
+  text-align: center;
+}
+.fx-table thead .fx-rank {
+  z-index: 4;
+  background: #c9dcee;
+  color: #0b2f4a;
+}
+.fx-rank-hi {
+  background: #5b8fc4;
+  color: #ffffff;
+}
+.fx-rank-lo {
+  background: #b9d3ea;
+  color: #0b2f4a;
+}
+.fx-rankno {
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fixture cells */
+.fx-cell {
+  width: 132px;
+  min-width: 132px;
+}
+.fx-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 56px;
+  padding: 2px;
+}
+.fx-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 4px 6px;
+  border-radius: 2px;
+  text-align: center;
+  white-space: nowrap;
+}
+.fx-pill b {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.fx-pill small {
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+.fx-table.is-simple .fx-pill {
+  min-height: 40px;
+}
+.fx-table.is-simple .fx-cell {
+  width: 84px;
+  min-width: 84px;
+}
+
+.fx-note {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+
+@media (max-width: 480px) {
+  .fx-team {
+    width: 96px;
+    min-width: 96px;
+  }
+  .fx-rank {
+    left: 96px;
+    width: 60px;
+    min-width: 60px;
+  }
+  .fx-teamcell span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
