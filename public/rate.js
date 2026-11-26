@@ -14,9 +14,16 @@
   const BUDGET = 1000; // £100.0m, in tenths
   const QUOTA = { 1: 2, 2: 5, 3: 5, 4: 3 };
   const POS = { 1: "GK", 2: "DEF", 3: "MID", 4: "FWD" };
-  const POS_NAME = { 1: "Goalkeeper", 2: "Defender", 3: "Midfielder", 4: "Forward" };
+  const POS_NAME = { 1: "goalkeeper", 2: "defender", 3: "midfielder", 4: "forward" };
   const MAX_CLUB = 3;
   const LIST_LIMIT = 60;
+  // Vertical position of each row on the pitch, in percent from the top (goalkeeper at the top).
+  const ROWS = [
+    { type: 1, y: 14 },
+    { type: 2, y: 36 },
+    { type: 3, y: 58 },
+    { type: 4, y: 80 },
+  ];
   const GRADES = [
     [97, "S"],
     [93, "A"],
@@ -41,6 +48,7 @@
     omin: 0,
     omax: 100,
     chip: "standard",
+    open: false,
   };
 
   const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
@@ -129,9 +137,7 @@
   }
 
   function ceilingFor(chip) {
-    if (!ceilings.has(chip)) {
-      ceilings.set(chip, bestXI([...byId.values()], chip));
-    }
+    if (!ceilings.has(chip)) ceilings.set(chip, bestXI([...byId.values()], chip));
     return ceilings.get(chip);
   }
 
@@ -140,29 +146,44 @@
   }
 
   // ---------- Pitch ----------
-  function pitchSlots() {
-    // Fill each row with the squad's players of that position, then empty slots for the rest.
-    for (const type of [1, 2, 3, 4]) {
-      const row = $(`rt-row-${type}`);
-      const players = state.squad.map((id) => byId.get(id)).filter((p) => p && p.element_type === type);
-      const slots = [];
+  function filledToken(p) {
+    return `<div class="rtp-token is-filled">
+      <span class="rtp-disc">${shirtImg(p)}</span>
+      <button type="button" class="rtp-x" data-remove="${p.id}" aria-label="Remove ${esc(p.web_name)}">×</button>
+      <span class="rtp-name">${esc(p.web_name)}</span>
+      <span class="rtp-price">${money(p.now_cost)}</span>
+    </div>`;
+  }
+
+  function emptyToken(type) {
+    return `<button type="button" class="rtp-token is-empty" data-slot="${type}" aria-label="Choose a ${POS_NAME[type]}">
+      <span class="rtp-disc"><span class="rtp-plus" aria-hidden="true">+</span></span>
+      <span class="rtp-poslbl">${POS[type]}</span>
+    </button>`;
+  }
+
+  // Draws the 15 slots. Each row is spaced evenly across the pitch, so tokens can't overlap.
+  function renderPitch() {
+    const box = $("rt-tokens");
+    const parts = [];
+    for (const { type } of ROWS) {
+      const picked = state.squad.map((id) => byId.get(id)).filter((p) => p && p.element_type === type);
       for (let i = 0; i < QUOTA[type]; i++) {
-        const p = players[i];
-        if (p) {
-          slots.push(`<div class="rt-slot is-filled">
-            ${shirtImg(p)}
-            <span class="rt-slot-name">${esc(p.web_name)}</span>
-            <span class="rt-slot-price">${money(p.now_cost)}</span>
-            <button type="button" class="rt-slot-x" data-remove="${p.id}" aria-label="Remove ${esc(p.web_name)}">×</button>
-          </div>`);
-        } else {
-          slots.push(`<button type="button" class="rt-slot is-empty" data-pos="${type}" aria-label="Pick a ${POS_NAME[type].toLowerCase()}">
-            <span class="rt-plus" aria-hidden="true">+</span>
-            <span class="rt-slot-pos">${POS[type]}</span>
-          </button>`);
-        }
+        parts.push(picked[i] ? filledToken(picked[i]) : emptyToken(type));
       }
-      row.innerHTML = slots.join("");
+    }
+    box.innerHTML = parts.join("");
+
+    // Positions are set here rather than in the HTML, because inline style attributes are blocked by the site's security policy.
+    let index = 0;
+    for (const { type, y } of ROWS) {
+      const n = QUOTA[type];
+      for (let i = 0; i < n; i++) {
+        const el = box.children[index++];
+        if (!el) continue;
+        el.style.left = `${((i + 1) / (n + 1)) * 100}%`;
+        el.style.top = `${y}%`;
+      }
     }
   }
 
@@ -180,9 +201,10 @@
     if (!result || !ceiling || ceiling.points <= 0) {
       $("rt-num").textContent = "0";
       ladder.forEach((el) => el.classList.remove("is-on"));
+      const left = 15 - state.squad.length;
       $("rt-msg").textContent = full
         ? "Fix the issues below to see your rating."
-        : `Pick ${15 - state.squad.length} more player${15 - state.squad.length === 1 ? "" : "s"} to get your rating. Tap any slot on the pitch to start.`;
+        : `Pick ${left} more player${left === 1 ? "" : "s"} to get your rating. Tap any slot on the pitch to start.`;
       $("rt-best").innerHTML = "";
       $("rt-xpts").textContent = "–";
     } else {
@@ -255,9 +277,10 @@
           .join("")
       : `<tr><td colspan="5" class="rt-empty">No players match these filters.</td></tr>`;
 
-    $("rt-count").textContent = all.length > LIST_LIMIT
-      ? `Showing ${LIST_LIMIT} of ${all.length} players. Narrow the filters to see more.`
-      : `${all.length} players`;
+    $("rt-count").textContent =
+      all.length > LIST_LIMIT
+        ? `Showing ${LIST_LIMIT} of ${all.length} players. Narrow the filters to see more.`
+        : `${all.length} players`;
   }
 
   function renderPills() {
@@ -268,7 +291,7 @@
 
   function renderAll() {
     save();
-    pitchSlots();
+    renderPitch();
     renderScore();
     renderTable();
     renderPills();
@@ -288,11 +311,26 @@
       const ids = (data.picks ?? []).map((pk) => pk.element).filter((id) => byId.has(id));
       if (!ids.length) throw new Error("No picks were found for this team.");
       state.squad = ids.slice(0, 15);
-      $("rt-import-msg").textContent = `Imported ${state.squad.length} players.`;
+      $("rt-import-msg").textContent = "";
+      $("rt-import").hidden = true;
+      state.open = false;
+      $("rt-import-btn").setAttribute("aria-expanded", "false");
+      showToast(`Team imported. ${state.squad.length} players loaded. Changes you make here don't affect your FPL team.`);
       renderAll();
     } catch (err) {
       $("rt-import-msg").textContent = `Could not import. ${err.message}`;
     }
+  }
+
+  function showToast(text) {
+    const t = $("rt-toast");
+    t.textContent = text;
+    t.hidden = false;
+  }
+
+  function hideToast() {
+    $("rt-toast").hidden = true;
+    $("rt-toast").textContent = "";
   }
 
   // ---------- Wiring ----------
@@ -301,6 +339,7 @@
       state.open = !state.open;
       $("rt-import").hidden = !state.open;
       $("rt-import-btn").setAttribute("aria-expanded", String(state.open));
+      if (state.open) $("rt-id").focus();
     });
 
     $("rt-import").addEventListener("submit", (e) => {
@@ -315,6 +354,7 @@
 
     $("rt-reset").addEventListener("click", () => {
       state.squad = [];
+      hideToast();
       renderAll();
     });
     $("rt-clear").addEventListener("click", () => {
@@ -357,7 +397,7 @@
     ownMin.addEventListener("input", onOwn);
     ownMax.addEventListener("input", onOwn);
 
-    // One delegated handler covers the table, the pitch and the position pills.
+    // One delegated handler covers the list, the pitch and the position filters.
     document.addEventListener("click", (e) => {
       const add = e.target.closest("[data-add]");
       if (add) {
@@ -373,7 +413,14 @@
         renderAll();
         return;
       }
-      const pos = e.target.closest("[data-pos]");
+      const slot = e.target.closest("[data-slot]");
+      if (slot) {
+        state.pos = Number(slot.dataset.slot);
+        renderAll();
+        $("rt-rows").closest(".rt-table-wrap")?.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      const pos = e.target.closest(".rt-pills [data-pos]");
       if (pos) {
         state.pos = Number(pos.dataset.pos);
         renderAll();
