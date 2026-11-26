@@ -4215,3 +4215,240 @@ main > .mt-deadline {
     width: 74px;
   }
 }
+
+
+
+
+/* Rate my team, pitch v2. Players are placed by calculated positions, so tokens never overlap.
+   The rtp- classes are new, so they don't clash with the earlier rt- styles. */
+.rtp-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+.rtp-btn {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #1f5a3a;
+  color: #fff;
+  font-weight: 700;
+}
+.rtp-btn-ghost {
+  background: var(--surface, #fff);
+  color: var(--text, #111);
+  border: 1px solid var(--border-strong, #cfd4dc);
+}
+.rtp-toast {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #e8f8ef;
+  color: #14532d;
+  font-size: 13px;
+  line-height: 1.4;
+  flex-basis: 100%;
+}
+.rtp-toast[hidden],
+.rtp-import[hidden] {
+  display: none;
+}
+.rtp-import {
+  display: grid;
+  gap: 8px;
+  max-width: 380px;
+  margin: 0 0 12px;
+  padding: 14px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.rtp-import label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.rtp-import-row {
+  display: flex;
+  gap: 8px;
+}
+.rtp-import-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+}
+.rtp-import a {
+  font-size: 13px;
+  color: #b1123f;
+}
+
+/* The pitch: a 4:5 box with the lines drawn in CSS. */
+.rtp-pitch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #4fa86a 0%, #3c9a5a 100%);
+}
+.rtp-pitch::before {
+  content: "";
+  position: absolute;
+  inset: 3%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.rtp-pitch::after {
+  content: "";
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  top: 50%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+.rtp-box {
+  position: absolute;
+  left: 22%;
+  width: 56%;
+  height: 17%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+.rtp-box-top {
+  top: 3%;
+  border-top: 0;
+}
+.rtp-box-bot {
+  bottom: 3%;
+  border-bottom: 0;
+}
+.rtp-circle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Tokens sit on the pitch. Their size scales with the screen, and the labels are kept narrow. */
+.rtp-tokens {
+  --tok: clamp(48px, 13vw, 66px);
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+.rtp-token {
+  position: absolute;
+  width: var(--tok);
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+}
+.rtp-disc {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.rtp-disc img {
+  width: 72%;
+  height: auto;
+}
+.rtp-token.is-filled .rtp-disc {
+  border: 2px solid #fff;
+}
+.rtp-token.is-empty {
+  cursor: pointer;
+}
+.rtp-token.is-empty .rtp-disc {
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px dashed rgba(255, 255, 255, 0.8);
+  box-shadow: none;
+}
+.rtp-token.is-empty:hover .rtp-disc,
+.rtp-token.is-empty:focus-visible .rtp-disc {
+  background: rgba(255, 255, 255, 0.28);
+}
+.rtp-plus {
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+}
+.rtp-poslbl,
+.rtp-name,
+.rtp-price {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: clamp(58px, 16vw, 88px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.3;
+  border-radius: 4px;
+}
+.rtp-poslbl {
+  top: calc(100% + 6px);
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #14532d;
+  font-weight: 800;
+  font-size: 10px;
+}
+.rtp-name {
+  top: calc(100% + 6px);
+  padding: 1px 6px;
+  background: #fff;
+  color: #111;
+  font-weight: 700;
+}
+.rtp-price {
+  top: calc(100% + 26px);
+  padding: 0 6px;
+  background: #1c2a22;
+  color: #fff;
+  font-weight: 700;
+}
+.rtp-x {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #111;
+  color: #fff;
+  font-size: 14px;
+  line-height: 22px;
+}
+.rtp-token.is-filled .rtp-x {
+  opacity: 0.9;
+}
+
+@media (hover: none) {
+  .rtp-token.is-empty:hover .rtp-disc {
+    background: rgba(255, 255, 255, 0.15);
+  }
+}
