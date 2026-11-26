@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """Suggests price-change thresholds from the site's logged price changes.
 
-Usage:
-    python analysis/calibrate.py https://your-site.pages.dev
+Usage, either of these:
+    python3 analysis/calibrate.py https://my-light-fpl.pages.dev
+    python3 analysis/calibrate.py path/to/folder
+
+The folder option reads two saved files from that folder:
+    events.json     (saved from /api/prices/events)
+    calibrate.json  (saved from /api/prices/calibrate)
 
 Needs Python 3.9 or newer. Uses only the standard library.
 """
 import json
+import pathlib
 import statistics
 import sys
+import urllib.error
 import urllib.request
 
 # Ownership bands, matching the server's BANDS. Each band is [low, high) in percent.
@@ -29,9 +36,49 @@ CURRENT = {
 }
 
 
-def fetch_json(url):
-    with urllib.request.urlopen(url, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+def fetch_url(url):
+    """Fetch JSON from the site. Exits with a clear message if the site refuses the request."""
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) FPL-calibrate/1.0",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as err:
+        sys.exit(
+            f"The site refused the request ({url}): HTTP {err.code}.\n"
+            "Save the page instead: open the link in a browser, copy all the text,\n"
+            "save it as events.json or calibrate.json in a folder, and run the script\n"
+            "with that folder instead of the site address."
+        )
+    except urllib.error.URLError as err:
+        sys.exit(f"Could not reach {url}: {err.reason}")
+
+
+def load_json_file(path):
+    if not path.is_file():
+        sys.exit(f"File not found: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_data(source):
+    """Return (events, calibrate) from either a site address or a folder of saved files."""
+    if source.startswith(("http://", "https://")):
+        site = source.rstrip("/")
+        events = fetch_url(f"{site}/api/prices/events").get("events", [])
+        calibrate = fetch_url(f"{site}/api/prices/calibrate")
+        return events, calibrate
+
+    folder = pathlib.Path(source)
+    if not folder.is_dir():
+        sys.exit(f"Folder not found: {folder}")
+    events = load_json_file(folder / "events.json").get("events", [])
+    calibrate = load_json_file(folder / "calibrate.json")
+    return events, calibrate
 
 
 def discount(own):
@@ -63,9 +110,7 @@ def main():
         print(__doc__)
         sys.exit(1)
 
-    site = sys.argv[1].rstrip("/")
-    events = fetch_json(f"{site}/api/prices/events").get("events", [])
-    calibrate = fetch_json(f"{site}/api/prices/calibrate")
+    events, calibrate = load_data(sys.argv[1])
 
     # Only logged events have a net figure. Imported and gameweek rows do not.
     logged = [e for e in events if e.get("net") is not None and e.get("own") is not None]
