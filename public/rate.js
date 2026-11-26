@@ -302,24 +302,17 @@
     return (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
   }
 
-  async function importTeam(entryId) {
-    $("rt-import-msg").textContent = "Loading your team…";
-    try {
-      const res = await fetch(`/api/picks/${entryId}/${currentGw()}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-      const ids = (data.picks ?? []).map((pk) => pk.element).filter((id) => byId.has(id));
-      if (!ids.length) throw new Error("No picks were found for this team.");
-      state.squad = ids.slice(0, 15);
-      $("rt-import-msg").textContent = "";
-      $("rt-import").hidden = true;
-      state.open = false;
-      $("rt-import-btn").setAttribute("aria-expanded", "false");
-      showToast(`Team imported. ${state.squad.length} players loaded. Changes you make here don't affect your FPL team.`);
-      renderAll();
-    } catch (err) {
-      $("rt-import-msg").textContent = `Could not import. ${err.message}`;
-    }
+  function openImport() {
+    state.open = true;
+    $("rt-import").hidden = false;
+    $("rt-import-btn").setAttribute("aria-expanded", "true");
+    $("rt-id").focus();
+  }
+
+  function closeImport() {
+    state.open = false;
+    $("rt-import").hidden = true;
+    $("rt-import-btn").setAttribute("aria-expanded", "false");
   }
 
   function showToast(text) {
@@ -333,14 +326,31 @@
     $("rt-toast").textContent = "";
   }
 
+  async function importTeam(entryId) {
+    $("rt-import-msg").textContent = "Loading your team…";
+    try {
+      const res = await fetch(`/api/picks/${entryId}/${currentGw()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      const ids = (data.picks ?? []).map((pk) => pk.element).filter((id) => byId.has(id));
+      if (!ids.length) throw new Error("No picks were found for this team.");
+      state.squad = ids.slice(0, 15);
+      $("rt-import-msg").textContent = "";
+      closeImport();
+      showToast(`Team imported. ${state.squad.length} players loaded. Changes you make here don't affect your FPL team.`);
+      renderAll();
+    } catch (err) {
+      $("rt-import-msg").textContent = `Could not import. ${err.message}`;
+    }
+  }
+
   // ---------- Wiring ----------
   function wire() {
     $("rt-import-btn").addEventListener("click", () => {
-      state.open = !state.open;
-      $("rt-import").hidden = !state.open;
-      $("rt-import-btn").setAttribute("aria-expanded", String(state.open));
-      if (state.open) $("rt-id").focus();
+      if (state.open) closeImport();
+      else openImport();
     });
+    $("rt-cta").addEventListener("click", openImport);
 
     $("rt-import").addEventListener("submit", (e) => {
       e.preventDefault();
@@ -417,7 +427,6 @@
       if (slot) {
         state.pos = Number(slot.dataset.slot);
         renderAll();
-        $("rt-rows").closest(".rt-table-wrap")?.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
       const pos = e.target.closest(".rt-pills [data-pos]");
