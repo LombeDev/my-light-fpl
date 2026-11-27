@@ -1,6 +1,7 @@
 /* my-team.js: My team, laid out like the live rank and points page.
-   Live points come from the live feed (window.FPL.live). Gameweek summary figures come from /api/gwstats.
-   Transfers come from /api/managers. Saves (SV pts) are not in FPL's public live feed, so they show a dash.
+   Points, minutes and bonus come from the live feed while matches are on, and from /api/gwstats otherwise,
+   so they stay correct after the match window closes. DC comes from the live feed only.
+   Saves (SV pts) are not in FPL's public feed, so they show a dash.
    Each section runs on its own, so one failure does not stop the rest. Page key: team-view. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
@@ -17,14 +18,13 @@
   const st = {
     snap: null,
     session: null,
-    gw: 1,           // the current gameweek, which is the one with live points
+    gw: 1,           // the current gameweek
     me: null,
     picks: null,
     mgr: null,       // this gameweek's transfers and hits, from /api/managers
-    stats: null,     // Map of player id to gameweek stats, or null if unavailable
+    stats: null,     // Map of player id to gameweek stats from /api/gwstats, or null if unavailable
     byId: new Map(),
     teamById: new Map(),
-    namesOn: true,
   };
 
   const readyP = new Promise((resolve) =>
@@ -94,18 +94,30 @@
     return out;
   }
 
-  // Everything a row needs: points, multiplier, total, bonus, defensive contributions and status.
+  // One player's figures for this gameweek. The live feed is used when it has the player, because it is
+  // the most current during matches. Otherwise the gameweek stats are used, which keep the final points.
+  function figures(id, live) {
+    const d = live.get(id);
+    const s = st.stats?.get(id);
+    if (d) {
+      return { pts: d.p, minutes: d.m, bn: d.bn ?? 0, dc: d.dc ?? null };
+    }
+    if (s) {
+      return { pts: s.pts ?? 0, minutes: s.minutes ?? 0, bn: s.bn ?? 0, dc: null };
+    }
+    return { pts: 0, minutes: 0, bn: 0, dc: null };
+  }
+
+  // Everything a row needs: points, multiplier, total, bonus, DC and status.
   function rowData(pk, live, states) {
     const p = st.byId.get(pk.element);
-    const d = live.get(pk.element);
+    const f = figures(pk.element, live);
     const mult = pk.multiplier ?? 1;
-    const pts = d ? d.p : 0;
-    const minutes = d ? d.m : 0;
     const fixState = p ? states.get(p.team) : undefined;
 
     let status;
     if (!p) status = "Unknown";
-    else if (minutes > 0) status = fixState === "finished" ? "Played" : "Playing";
+    else if (f.minutes > 0) status = fixState === "finished" ? "Played" : "Playing";
     else if (fixState === "finished") status = "Did not play";
     else if (fixState === undefined) status = "No fixture";
     else status = "Yet to play";
@@ -113,11 +125,11 @@
     return {
       p,
       pk,
-      pts,
+      pts: f.pts,
       mult,
-      total: pts * mult,
-      bn: d ? (d.bn ?? 0) : 0,
-      dc: d ? (d.dc ?? null) : null,
+      total: f.pts * mult,
+      bn: f.bn,
+      dc: f.dc,
       status,
     };
   }
@@ -189,13 +201,12 @@
   }
 
   // ---------- Gameweek summary (starting XI only) ----------
-  function renderSummary(xi) {
+  function renderSummary(xi, live) {
     const box = $("mtl-sum");
     if (!st.stats) {
       box.innerHTML = `<p class="mtl-empty">The gameweek summary is not available yet.</p>`;
       return;
     }
-    const live = liveMap();
     const ids = xi.map((pk) => pk.element);
     const isDefOrGk = (id) => {
       const p = st.byId.get(id);
@@ -206,7 +217,7 @@
         const e = st.stats.get(id);
         return filter(id) && e ? total + (e[key] || 0) : total;
       }, 0);
-    const dcTotal = ids.reduce((total, id) => total + (live.get(id)?.dc ?? 0), 0);
+    const dcTotal = ids.reduce((total, id) => total + (figures(id, live).dc ?? 0), 0);
 
     const items = [
       ["Goals", sum("gs")],
@@ -245,7 +256,7 @@
     safe("Starting 11", () => renderRows("mtl-start", xi, live, states));
     safe("Bench", () => renderRows("mtl-bench", bench, live, states));
     safe("Transfers", renderTransfers);
-    safe("Summary", () => renderSummary(xi));
+    safe("Summary", () => renderSummary(xi, live));
   }
 
   // ---------- Loading ----------
@@ -287,8 +298,7 @@
   // ---------- Wiring ----------
   function wire() {
     $("mtl-names").addEventListener("change", (e) => {
-      st.namesOn = e.target.checked;
-      $("mtl").classList.toggle("is-names-off", !st.namesOn);
+      $("mtl").classList.toggle("is-names-off", !e.target.checked);
     });
     $("mtl-refresh").addEventListener("click", refresh);
   }
