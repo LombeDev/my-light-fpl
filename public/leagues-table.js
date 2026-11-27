@@ -1,28 +1,65 @@
-/* leagues-table.js: the mini-league table, team views, live points in each row, and the league dropdown.
-   Page key: league-table. Loads after app.js and team-view.js. */
+/* leagues-table.js: mini-league analysis, a sortable gameweek table, live rank and projected points,
+   team views and CSV download. Uses only data the site already loads: league standings, /api/managers,
+   /api/livescore and /api/picks. Page key: league-table. Loads after app.js, menu.js and team-view.js. */
 (() => {
   if (document.body.dataset.page !== "league-table") return;
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const ID = /^\d{1,9}$/;
-  const SHOW = 25;
-  const BATCH = 10;
-  const DASH = "–";
-  const PENDING = `<span class="muted">…</span>`;
-  const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
-  const pts = (n) => Math.round(n).toLocaleString();
-  const kRank = (n) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
+  const PAGE_SIZE = 50; // managers per league page, as the league route returns them
+  const BATCH = 10;     // ids per /managers and /livescore request
+  const pts = (n) => Math.round(Number(n) || 0).toLocaleString();
+  const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
 
-  let snap = null;
-  let gw = 1;
-  let playerName = new Map();
-  let currentLeague = "";
-  let rows = [];
-  let shown = 0;
-  const mgr = new Map();
-  let liveOn = false;
-  let liveByEntry = new Map();
+  const COLS = [
+    { key: "manager", label: "Name", sort: true, text: true },
+    { key: "liveRank", label: "Live ML rank", sort: true },
+    { key: "change", label: "Change", sort: true },
+    { key: "gwPts", label: "Live GW pts", sort: true },
+    { key: "liveTotal", label: "Live overall", sort: true },
+    { key: "total", label: "Total", sort: true },
+    { key: "captain", label: "Captain", sort: true, text: true },
+    { key: "vc", label: "Vice", sort: true, text: true },
+    { key: "chip", label: "Active chip", sort: true, text: true },
+    { key: "moveCount", label: "GW transfers", sort: true },
+    { key: "hit", label: "Hit", sort: true },
+    { key: "moves", label: "Transfers", sort: false, text: true },
+  ];
+
+  const SORT = {
+    manager: (r) => r.manager,
+    liveRank: (r) => r.liveRank,
+    change: (r) => r.change ?? -999,
+    gwPts: (r) => r.gwPts,
+    liveTotal: (r) => r.liveTotal,
+    total: (r) => r.total,
+    captain: (r) => r.captain,
+    vc: (r) => r.vc,
+    chip: (r) => r.chip,
+    moveCount: (r) => r.moveCount,
+    hit: (r) => r.hit,
+  };
+
+  const S = {
+    snap: null,
+    gw: 1,
+    leagueId: "",
+    pageNo: 1,
+    hasNext: false,
+    entries: [],          // league standings rows for this page
+    detail: new Map(),    // entry -> /api/managers data
+    live: new Map(),      // entry -> projected points during matches
+    isLive: false,
+    rows: [],             // computed rows for the table and analysis
+    sortKey: "liveRank",
+    sortDir: 1,
+    filter: "",
+    open: new Set(),      // entries whose team view is open
+    teamHtml: new Map(),  // entry -> rendered team view
+    names: new Map(),     // player id -> name
+    loadToken: 0,
+  };
 
   const readyP = new Promise((resolve) =>
     document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
@@ -39,215 +76,418 @@
     return data;
   }
 
-  const session = () => {
+  const nameOf = (id) => (id ? S.names.get(id) ?? "Unknown" : "");
+
+  // ---------- Building the rows ----------
+  function buildRows() {
+    const offset = (S.pageNo - 1) * PAGE_SIZE;
+    const rows = S.entries.map((e, i) => {
+      const d = S.detail.get(e.entry) ?? null;
+      const lv = S.isLive ? S.live.get(e.entry) : null;
+      const total = Number(e.total) || 0;
+      const gw = Number(e.gw) || 0;
+      return {
+        entry: e.entry,
+        team: e.team ?? "",
+        manager: e.manager ?? "",
+        leaguePos: offset + i + 1,
+        total,
+        d,
+        gwPts: lv ? lv.gross : Number(d?.gross ?? gw),
+        liveTotal: lv ? lv.exp : total,
+      };
+    });
+
+    // Live rank: by projected total during matches, otherwise by the league total.
+    [...rows]
+      .sort((a, b) => b.liveTotal - a.liveTotal || a.leaguePos - b.leaguePos)
+      .forEach((r, i) => {
+        r.liveRank = i + 1;
+      });
+
+    for (const r of rows) {
+      const d = r.d;
+      r.change = S.isLive ? r.leaguePos - r.liveRank : null;
+      r.captain = d ? nameOf(d.captainId) : "";
+      r.vc = d ? nameOf(d.viceId) : "";
+      r.chip = d?.chip ?? "";
+      r.hit = Number(d?.hit) || 0;
+      r.moves = d?.transfers ?? [];
+      r.moveCount = r.moves.length;
+      r.value = Number(d?.value) || 0;
+    }
+    return rows;
+  }
+
+  // ---------- Analysis tiles ----------
+  function highlights(rows) {
+    const have = rows.filter((r) => r.d);
+    const best = (list, fn) => list.reduce((b, r) => (b === null || fn(r) > fn(b) ? r : b), null);
+    const worst = (list, fn) => list.reduce((b, r) => (b === null || fn(r) < fn(b) ? r : b), null);
+    const tally = (items) => {
+      const m = new Map();
+      for (const k of items) if (k) m.set(k, (m.get(k) ?? 0) + 1);
+      return m;
+    };
+    const top = (m) => {
+      let t = null;
+      for (const [k, v] of m) if (!t || v > t[1]) t = [k, v];
+      return t;
+    };
+    const T = (icon, title, value, sub) => ({ icon, title, value, sub });
+    const out = [];
+
+    const hi = best(have, (r) => r.gwPts);
+    const lo = worst(have, (r) => r.gwPts);
+    out.push(hi ? T("🎯", "Manager of the week", hi.manager, `${pts(hi.gwPts)} pts`) : T("🎯", "Manager of the week", "–", "Loading"));
+    out.push(lo ? T("🥄", "Worst manager of the week", lo.manager, `${pts(lo.gwPts)} pts`) : T("🥄", "Worst manager of the week", "–", "Loading"));
+
+    if (S.isLive) {
+      const up = best(rows, (r) => r.change ?? -999);
+      const down = worst(rows, (r) => r.change ?? 999);
+      out.push(up && up.change > 0
+        ? T("📈", "Biggest rise", up.manager, `+${up.change} places`)
+        : T("📈", "Biggest rise", "None yet", "Nobody has moved up"));
+      out.push(down && down.change < 0
+        ? T("📉", "Biggest fall", down.manager, `${down.change} places`)
+        : T("📉", "Biggest fall", "None yet", "Nobody has dropped"));
+    } else {
+      out.push(T("📈", "Biggest rise", "Waiting", "Shown once matches are live"));
+      out.push(T("📉", "Biggest fall", "Waiting", "Shown once matches are live"));
+    }
+
+    const cap = top(tally(have.map((r) => r.captain)));
+    out.push(cap ? T("©", "Most captained", cap[0], `${cap[1]} managers`) : T("©", "Most captained", "–", "Loading"));
+
+    const ins = top(tally(have.flatMap((r) => r.moves.map((m) => nameOf(m.inId)))));
+    const outs = top(tally(have.flatMap((r) => r.moves.map((m) => nameOf(m.outId)))));
+    out.push(ins
+      ? T("👍", "Most transferred in", ins[0], `${ins[1]} managers`)
+      : T("👍", "Most transferred in", "None yet", "No transfers this week"));
+    out.push(outs
+      ? T("👎", "Most transferred out", outs[0], `${outs[1]} managers`)
+      : T("👎", "Most transferred out", "None yet", "No transfers this week"));
+
+    const valued = have.filter((r) => r.value > 0);
+    const rich = best(valued, (r) => r.value);
+    const poor = worst(valued, (r) => r.value);
+    out.push(rich ? T("💰", "Best team value", rich.manager, money(rich.value)) : T("💰", "Best team value", "–", "Loading"));
+    out.push(poor ? T("💸", "Lowest team value", poor.manager, money(poor.value)) : T("💸", "Lowest team value", "–", "Loading"));
+
+    const busy = best(have, (r) => r.moveCount);
+    out.push(busy && busy.moveCount > 0
+      ? T("🔀", "Most transfers this week", busy.manager, `${busy.moveCount} moves`)
+      : T("🔀", "Most transfers this week", "None yet", "No transfers this week"));
+
+    const hit = best(have, (r) => r.hit);
+    out.push(hit && hit.hit > 0
+      ? T("🧨", "Worst transfers this week", hit.manager, `−${hit.hit} pts in hits`)
+      : T("🧨", "Worst transfers this week", "None", "No point hits taken"));
+
+    const chips = tally(have.map((r) => r.chip));
+    const chipText = [...chips].map(([k, v]) => `${k} ×${v}`).join(", ");
+    const chipCount = [...chips.values()].reduce((a, b) => a + b, 0);
+    out.push(T("🃏", "Chips this week", chipText || "None", chipCount ? `${chipCount} managers` : "No chips played"));
+
+    return out;
+  }
+
+  function renderHighlights(rows) {
+    $("la-tiles").innerHTML = highlights(rows)
+      .map((t) => `<div class="la-tile">
+        <span class="la-ico" aria-hidden="true">${t.icon}</span>
+        <div>
+          <div class="la-title">${esc(t.title)}</div>
+          <div class="la-val">${esc(t.value)}</div>
+          <div class="la-sub">${esc(t.sub)}</div>
+        </div>
+      </div>`)
+      .join("");
+
+    const loaded = rows.filter((r) => r.d).length;
+    $("la-note").textContent =
+      loaded < rows.length
+        ? `Loading managers: ${loaded} of ${rows.length} done.`
+        : `Based on the ${rows.length} managers on this page. Bench points, ownership and all-time ranks need data the public feed doesn't include, so they aren't shown.`;
+  }
+
+  // ---------- Table ----------
+  function visibleRows(rows) {
+    const q = S.filter.trim().toLowerCase();
+    const list = q
+      ? rows.filter((r) => r.manager.toLowerCase().includes(q) || r.team.toLowerCase().includes(q))
+      : [...rows];
+    const get = SORT[S.sortKey] ?? SORT.liveRank;
+    return list.sort((a, b) => {
+      const x = get(a);
+      const y = get(b);
+      if (typeof x === "string") return S.sortDir * x.localeCompare(y);
+      return S.sortDir * (x - y);
+    });
+  }
+
+  function renderHead() {
+    const cells = COLS.map((c) => {
+      if (!c.sort) return `<th scope="col">${esc(c.label)}</th>`;
+      const on = S.sortKey === c.key;
+      const aria = on ? (S.sortDir > 0 ? "ascending" : "descending") : "none";
+      const mark = on ? (S.sortDir > 0 ? " ▲" : " ▼") : "";
+      return `<th scope="col" class="${c.text ? "" : "n"}" aria-sort="${aria}">
+        <button type="button" class="lx-sort${on ? " is-on" : ""}" data-sort="${c.key}">${esc(c.label)}${mark}</button>
+      </th>`;
+    });
+    $("lx-head").innerHTML = `<tr>${cells.join("")}</tr>`;
+  }
+
+  function rowHtml(r) {
+    const cls = r.change === null ? "" : r.change > 0 ? "up" : r.change < 0 ? "down" : "";
+    const change = r.change === null ? "–" : r.change > 0 ? `+${r.change}` : String(r.change);
+    const open = S.open.has(r.entry);
+    const moves = r.moves.length
+      ? r.moves
+          .map((m) => `<span class="lx-move"><span class="lx-out">${esc(nameOf(m.outId))}</span> → <span class="lx-in">${esc(nameOf(m.inId))}</span></span>`)
+          .join("")
+      : `<span class="muted">None</span>`;
+
+    return `<tr data-row="${r.entry}">
+      <td class="lx-name">
+        <div class="lx-team">${esc(r.team)}</div>
+        <div class="lx-mgr">${esc(r.manager)}</div>
+        <button type="button" class="lx-view" data-view="${r.entry}" aria-expanded="${open}">${open ? "Hide team" : "View team"}</button>
+      </td>
+      <td class="n">${r.liveRank}</td>
+      <td class="n ${cls}">${change}</td>
+      <td class="n">${pts(r.gwPts)}</td>
+      <td class="n">${pts(r.liveTotal)}</td>
+      <td class="n">${pts(r.total)}</td>
+      <td>${esc(r.captain || "–")}</td>
+      <td>${esc(r.vc || "–")}</td>
+      <td>${r.chip ? `<span class="lx-chip">${esc(r.chip)}</span>` : "–"}</td>
+      <td class="n">${r.moveCount}</td>
+      <td class="n">${r.hit ? `−${r.hit}` : "0"}</td>
+      <td class="lx-moves">${moves}</td>
+    </tr>`;
+  }
+
+  function renderTable(rows) {
+    renderHead();
+    const list = visibleRows(rows);
+    let html = "";
+    for (const r of list) {
+      html += rowHtml(r);
+      if (S.open.has(r.entry)) {
+        html += `<tr class="lx-detail"><td colspan="${COLS.length}">${
+          S.teamHtml.get(r.entry) ?? `<p class="lx-loading">Loading team…</p>`
+        }</td></tr>`;
+      }
+    }
+    $("lx-rows").innerHTML =
+      html || `<tr><td colspan="${COLS.length}" class="lx-empty">No managers match this filter.</td></tr>`;
+    $("lx-count").textContent = `${list.length} of ${rows.length} managers`;
+  }
+
+  function renderPager() {
+    $("prev").hidden = S.pageNo <= 1;
+    $("next").hidden = !S.hasNext;
+    $("prev").onclick = () => location.assign(`/leagues?id=${S.leagueId}&page=${S.pageNo - 1}`);
+    $("next").onclick = () => location.assign(`/leagues?id=${S.leagueId}&page=${S.pageNo + 1}`);
+    const time = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    $("meta").textContent = `Page ${S.pageNo} · ${S.entries.length} managers · Updated ${time}`;
+  }
+
+  function renderAll() {
+    S.rows = buildRows();
+    renderHighlights(S.rows);
+    renderTable(S.rows);
+    renderPager();
+  }
+
+  // ---------- Team views ----------
+  function closeTeam(entry) {
+    S.open.delete(entry);
+    renderAll();
+  }
+
+  async function openTeam(entry) {
+    S.open.add(entry);
+    renderAll();
+    if (S.teamHtml.has(entry)) return;
+
+    try {
+      const picks = await api(`/picks/${entry}/${S.gw}`);
+      const d = S.detail.get(entry);
+      const live = window.FPL?.live?.() ?? new Map();
+      const holder = document.createElement("div");
+      window.TEAMVIEW.render(holder, picks, {
+        snap: S.snap,
+        live,
+        hasLive: live.size > 0,
+        gw: S.gw,
+        gross: Number(d?.gross ?? picks.entry_history?.points ?? 0),
+        rank: d?.overallRank ?? null,
+        back: true,
+      });
+      S.teamHtml.set(entry, holder.innerHTML);
+    } catch (err) {
+      S.teamHtml.set(entry, `<p class="lx-loading">Could not load this team. ${esc(err.message)}</p>`);
+    }
+    if (S.open.has(entry)) renderAll();
+  }
+
+  // ---------- Loading ----------
+  async function loadDetails(ids, token) {
+    for (let i = 0; i < ids.length; i += BATCH) {
+      if (token !== S.loadToken) return;
+      try {
+        const data = await api(`/managers?ids=${ids.slice(i, i + BATCH).join(",")}`);
+        for (const m of data.managers ?? []) S.detail.set(m.entry, m);
+      } catch {
+        // Managers that fail keep their league figures, without captain or transfer detail.
+      }
+      if (token === S.loadToken) renderAll();
+    }
+  }
+
+  async function loadLive(ids, token) {
+    for (let i = 0; i < ids.length; i += BATCH) {
+      if (token !== S.loadToken) return;
+      const data = await api(`/livescore?ids=${ids.slice(i, i + BATCH).join(",")}`).catch(() => null);
+      if (!data) continue;
+      S.isLive = S.isLive || !!data.live;
+      for (const r of data.rows ?? []) {
+        const e = S.entries.find((x) => x.entry === r.entry);
+        const base = e ? (Number(e.total) || 0) - (Number(e.gw) || 0) : 0;
+        const net = (Number(r.gross) || 0) - (Number(r.hits) || 0);
+        S.live.set(r.entry, {
+          gross: Number(r.gross) || 0,
+          exp: base + net + (Number(r.remaining?.exp) || 0),
+        });
+      }
+      if (token === S.loadToken) renderAll();
+    }
+  }
+
+  async function loadLeague(id, pageNo) {
+    const token = ++S.loadToken;
+    const data = await api(`/league/${id}?page=${pageNo}`);
+
+    Object.assign(S, {
+      leagueId: id,
+      pageNo,
+      hasNext: !!data.hasNext,
+      entries: data.results ?? [],
+      detail: new Map(),
+      live: new Map(),
+      isLive: false,
+      open: new Set(),
+      teamHtml: new Map(),
+    });
+
+    setHeader(data.league);
+    renderAll();
+
+    const ids = S.entries.map((e) => e.entry);
+    await loadDetails(ids, token);
+    await loadLive(ids, token);
+
+    if (token === S.loadToken) {
+      $("live-status").textContent = S.isLive
+        ? "Matches are in play. Live figures update about once a minute."
+        : "No matches in play right now. Live points appear during match windows.";
+    }
+  }
+
+  function setHeader(name) {
+    const label = name || "Mini-league";
+    $("title").textContent = label;
+    $("lg-label").textContent = name || "Leagues";
+    $("gw-label").textContent = `Gameweek ${S.gw}`;
+    document.title = `${label} · FPL`;
+  }
+
+  // ---------- CSV ----------
+  function downloadCsv() {
+    const quote = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const head = ["Name", "Team", "Live ML rank", "Change", "Live GW pts", "Live overall", "Total", "Captain", "Vice", "Active chip", "GW transfers", "Hit", "Transfers"];
+    const lines = [head.map(quote).join(",")];
+
+    for (const r of visibleRows(S.rows)) {
+      const moves = r.moves.map((m) => `${nameOf(m.outId)} -> ${nameOf(m.inId)}`).join("; ");
+      lines.push([
+        r.manager,
+        r.team,
+        r.liveRank,
+        r.change ?? "",
+        r.gwPts,
+        r.liveTotal,
+        r.total,
+        r.captain,
+        r.vc,
+        r.chip,
+        r.moveCount,
+        r.hit,
+        moves,
+      ].map(quote).join(","));
+    }
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `league-${S.leagueId || "table"}-gw${S.gw}.csv`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ---------- Table controls ----------
+  function wireTable() {
+    $("lx-head").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-sort]");
+      if (!b) return;
+      const key = b.dataset.sort;
+      if (S.sortKey === key) {
+        S.sortDir = -S.sortDir;
+      } else {
+        const text = COLS.find((c) => c.key === key)?.text;
+        S.sortKey = key;
+        S.sortDir = key === "liveRank" || text ? 1 : -1;
+      }
+      renderAll();
+    });
+
+    $("lx-rows").addEventListener("click", (e) => {
+      const view = e.target.closest("[data-view]");
+      if (view) {
+        const id = Number(view.dataset.view);
+        if (S.open.has(id)) closeTeam(id);
+        else openTeam(id);
+        return;
+      }
+      const back = e.target.closest("[data-tv-back]");
+      if (back) {
+        const main = back.closest("tr.lx-detail")?.previousElementSibling;
+        if (main?.dataset.row) closeTeam(Number(main.dataset.row));
+      }
+    });
+
+    $("lx-filter").addEventListener("input", (e) => {
+      S.filter = e.target.value;
+      renderAll();
+    });
+    $("lx-csv").addEventListener("click", downloadCsv);
+  }
+
+  // ---------- Your leagues menu ----------
+  function session() {
     try {
       return JSON.parse(localStorage.getItem("fpl.session"));
     } catch {
       return null;
     }
-  };
-
-  const nameOf = (id) => playerName.get(id) ?? "Unknown";
-  const currentGwOf = (s) => (s.events.find((e) => e.current) ?? s.events.find((e) => e.next) ?? s.events[0])?.id ?? 1;
-
-  // ---------- Live maths ----------
-  async function scoreAll(ids) {
-    const chunks = [];
-    for (let i = 0; i < ids.length; i += BATCH) chunks.push(ids.slice(i, i + BATCH));
-    const results = await Promise.all(
-      chunks.map((c) => api(`/livescore?ids=${c.join(",")}`).catch(() => null)),
-    );
-    const out = new Map();
-    let isLive = false;
-    for (const d of results) {
-      if (!d) continue;
-      isLive = isLive || d.live;
-      for (const r of d.rows) out.set(r.entry, r);
-    }
-    return { out, isLive };
   }
 
-  function project(row, base) {
-    const net = row.gross - row.hits;
-    const at = (k) => base + net + row.remaining[k];
-    return { gross: row.gross, hits: row.hits, net, low: at("low"), exp: at("exp"), high: at("high") };
-  }
-
-  // Writes the live line under the points of each visible row, only during match windows.
-  function applyLive(list) {
-    for (const r of list) {
-      const el = document.querySelector(`tr[data-row="${r.entry}"] .lt-live`);
-      if (!el) continue;
-      const v = liveOn ? liveByEntry.get(r.entry) : null;
-      el.textContent = v ? `Live ${pts(v.gross)} · proj ${pts(v.exp)}` : "";
-    }
-  }
-
-  async function computeLive(list) {
-    const { out, isLive } = await scoreAll(list.map((r) => r.entry));
-    liveOn = isLive;
-    liveByEntry = new Map();
-    if (isLive) {
-      list
-        .filter((r) => out.has(r.entry))
-        .map((r) => ({ entry: r.entry, ...project(out.get(r.entry), r.total - r.gw) }))
-        .forEach((v) => liveByEntry.set(v.entry, v));
-    }
-    applyLive(rows.slice(0, shown));
-  }
-
-  // ---------- Table rows ----------
-  function rowHtml(r) {
-    return `<tr data-row="${r.entry}">
-      <td class="lt-name">
-        <div class="lt-namewrap">
-          <img class="lt-shirt" alt="" loading="lazy" hidden>
-          <div class="lt-namecol">
-            <span class="lt-team">${esc(r.team)}</span>
-            <div class="lt-mgr">${esc(r.manager)}</div>
-            <button type="button" class="lt-view" data-view="${r.entry}" aria-expanded="false">View Team <span aria-hidden="true">⌄</span></button>
-          </div>
-        </div>
-      </td>
-      <td class="lt-pts">
-        <div class="lt-gross">${r.gw}</div>
-        <div class="lt-total">(${r.total})</div>
-        <div class="lt-live"></div>
-      </td>
-      <td class="lt-rank" data-c="rank">${PENDING}</td>
-      <td class="lt-trs" data-c="transfers">${PENDING}</td>
-    </tr>`;
-  }
-
-  // Only the active chip is shown. Nothing appears when no chip is active.
-  function chipHtml(d) {
-    return d.chip ? `<div class="lt-chips"><span class="lt-chip is-active">${esc(d.chip)}</span></div>` : "";
-  }
-
-  function transfersHtml(d) {
-    const cap = d.captainId
-      ? `<div class="lt-cap">${esc(nameOf(d.captainId))} <span class="lt-cbadge">C</span></div>`
-      : "";
-    const moves = d.transfers.length
-      ? d.transfers
-          .map(
-            (t) => `<div class="lt-move"><span class="lt-out">${esc(nameOf(t.outId))}</span> <span class="lt-arrow" aria-hidden="true">›</span> <span class="lt-in">${esc(nameOf(t.inId))}</span></div>`,
-          )
-          .join("")
-      : `<div class="lt-none">No transfers</div>`;
-    return `${cap}${chipHtml(d)}${moves}`;
-  }
-
-  function fill(d) {
-    const tr = document.querySelector(`tr[data-row="${d.entry}"]`);
-    if (!tr) return;
-    mgr.set(d.entry, d);
-
-    const img = tr.querySelector(".lt-shirt");
-    if (d.captainShirt) {
-      img.src = `${SHIRTS}/shirt_${d.captainShirt}-66.png`;
-      img.hidden = false;
-    }
-
-    const hit = d.hit > 0 ? ` <span class="lt-hit">(−${d.hit})</span>` : "";
-    tr.querySelector(".lt-gross").innerHTML = `${d.gross}${hit}`;
-    tr.querySelector('[data-c="rank"]').textContent = d.overallRank ? kRank(d.overallRank) : DASH;
-    tr.querySelector('[data-c="transfers"]').innerHTML = transfersHtml(d);
-  }
-
-  function blank(r) {
-    const tr = document.querySelector(`tr[data-row="${r.entry}"]`);
-    if (!tr) return;
-    tr.querySelector('[data-c="rank"]').textContent = DASH;
-    tr.querySelector('[data-c="transfers"]').textContent = DASH;
-  }
-
-  async function fillDetails(list) {
-    for (let i = 0; i < list.length; i += BATCH) {
-      const chunk = list.slice(i, i + BATCH);
-      try {
-        const { managers } = await api(`/managers?ids=${chunk.map((r) => r.entry).join(",")}`);
-        const got = new Set(managers.map((m) => m.entry));
-        managers.forEach(fill);
-        chunk.filter((r) => !got.has(r.entry)).forEach(blank);
-      } catch {
-        chunk.forEach(blank);
-      }
-    }
-  }
-
-  function updateMore() {
-    const btn = $("more-league");
-    const left = rows.length - shown;
-    btn.hidden = left <= 0;
-    btn.textContent = `Show more (${left} left)`;
-  }
-
-  function showMore() {
-    const start = shown;
-    shown = Math.min(rows.length, shown + SHOW);
-    const batch = rows.slice(start, shown);
-    if (batch.length) {
-      $("rows").insertAdjacentHTML("beforeend", batch.map(rowHtml).join(""));
-      fillDetails(batch);
-      applyLive(batch);
-    }
-    updateMore();
-  }
-
-  // ---------- Team view inside a row ----------
-  function closeTeam(entry) {
-    document.querySelector(`tr[data-detail="${entry}"]`)?.remove();
-    const btn = document.querySelector(`[data-view="${entry}"]`);
-    if (btn) {
-      btn.setAttribute("aria-expanded", "false");
-      btn.innerHTML = `View Team <span aria-hidden="true">⌄</span>`;
-    }
-  }
-
-  async function toggleTeam(entry, btn) {
-    if (document.querySelector(`tr[data-detail="${entry}"]`)) return closeTeam(entry);
-
-    const row = document.querySelector(`tr[data-row="${entry}"]`);
-    btn.setAttribute("aria-expanded", "true");
-    btn.innerHTML = `Hide Team <span aria-hidden="true">⌃</span>`;
-
-    const detail = document.createElement("tr");
-    detail.dataset.detail = String(entry);
-    detail.innerHTML = `<td colspan="4" class="lt-detail"><div class="tv-slot"></div></td>`;
-    row.after(detail);
-    const slot = detail.querySelector(".tv-slot");
-
-    try {
-      const [picks, data] = await Promise.all([
-        api(`/picks/${entry}/${gw}`),
-        mgr.has(entry) ? Promise.resolve({ managers: [mgr.get(entry)] }) : api(`/managers?ids=${entry}`),
-      ]);
-      const d = data.managers[0] ?? {};
-      const live = window.FPL?.live?.() ?? new Map();
-      window.TEAMVIEW.render(slot, picks, {
-        snap,
-        live,
-        hasLive: live.size > 0,
-        gw,
-        gross: d.gross ?? picks.entry_history?.points ?? 0,
-        rank: d.overallRank ?? null,
-        back: true,
-      });
-      slot.querySelector("[data-tv-back]")?.addEventListener("click", () => closeTeam(entry));
-    } catch (err) {
-      slot.textContent = `Could not load team. ${err.message}`;
-    }
-  }
-
-  // ---------- Header ----------
-  function setHeader(name) {
-    $("title").textContent = name;
-    $("lg-label").textContent = name;
-    document.title = `${name} · FPL`;
-  }
-
-  // ---------- League dropdown ----------
   function setupMenu() {
     const btn = $("lg-btn");
     const menu = $("lg-menu");
@@ -279,51 +519,25 @@
       const open = new URLSearchParams(location.search).get("id");
       $("mine-list").innerHTML = leagues
         .map(
-          (l) =>
-            `<li><a href="/leagues?id=${l.id}" aria-current="${String(String(l.id) === open)}">${esc(l.name)}${
-              l.rank ? ` <span class="muted">· rank ${Number(l.rank).toLocaleString()}</span>` : ""
-            }</a></li>`,
+          (l) => `<li><a href="/leagues?id=${l.id}" aria-current="${String(String(l.id) === open)}">${esc(l.name)}${
+            l.rank ? ` <span class="muted">· rank ${Number(l.rank).toLocaleString()}</span>` : ""
+          }</a></li>`,
         )
         .join("");
       $("mine").hidden = false;
       setupMenu();
     } catch {
-      /* not signed in, or FPL unavailable */
+      // Not signed in, or FPL is unavailable. The dropdown stays hidden.
     }
   }
 
-  // ---------- Load a league ----------
-  async function loadLeague(id, pageNo) {
-    currentLeague = id;
-    const data = await api(`/league/${id}?page=${pageNo}`);
-
-    rows = data.results;
-    shown = 0;
-    mgr.clear();
-    liveOn = false;
-    liveByEntry = new Map();
-
-    setHeader(data.league);
-    $("meta").textContent = `Page ${pageNo} · ${rows.length} managers`;
-    $("rows").innerHTML = rows.length
-      ? ""
-      : `<tr><td colspan="4" class="lt-empty">No managers on this page.</td></tr>`;
-
-    $("prev").hidden = pageNo <= 1;
-    $("next").hidden = !data.hasNext;
-    $("prev").onclick = () => location.assign(`/leagues?id=${id}&page=${pageNo - 1}`);
-    $("next").onclick = () => location.assign(`/leagues?id=${id}&page=${pageNo + 1}`);
-
-    showMore();
-    computeLive(rows);
-  }
-
+  // ---------- Start ----------
   function initLeagues() {
     const params = new URLSearchParams(location.search);
     const id = (params.get("id") ?? "").trim();
     const pageNo = Math.max(1, Number(params.get("page")) || 1);
-
     $("id").value = id;
+
     $("find").addEventListener("submit", (e) => {
       e.preventDefault();
       const v = $("id").value.trim();
@@ -331,34 +545,33 @@
       else $("meta").textContent = "Enter a numeric league ID.";
     });
 
-    $("rows").addEventListener("click", (e) => {
-      const view = e.target.closest("[data-view]");
-      if (view) toggleTeam(Number(view.dataset.view), view);
-    });
-    $("more-league").addEventListener("click", showMore);
-
     showMyLeagues();
+    renderAll();
 
     if (!id) {
       $("meta").textContent = "Enter a classic league ID, or pick one of your leagues.";
+      $("lx-rows").innerHTML = `<tr><td colspan="${COLS.length}" class="lx-empty">Enter a league ID above to see its gameweek table.</td></tr>`;
       return;
     }
     if (!ID.test(id)) {
       $("meta").textContent = "Enter a numeric league ID.";
       return;
     }
+
     loadLeague(id, pageNo).catch((err) => {
       $("meta").textContent = err.message;
-      $("rows").innerHTML = "";
+      $("lx-rows").innerHTML = `<tr><td colspan="${COLS.length}" class="lx-empty">${esc(err.message)}</td></tr>`;
     });
   }
 
-  // ---------- Boot ----------
-  readyP.then((s) => {
-    snap = s;
-    gw = currentGwOf(s);
-    playerName = new Map(s.players.map((p) => [p.id, p.web_name]));
+  readyP.then((snap) => {
+    if (!snap) return;
+    S.snap = snap;
+    S.names = new Map(snap.players.map((p) => [p.id, p.web_name]));
+    const current = snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0];
+    S.gw = current?.id ?? 1;
     document.querySelectorAll('nav a[href="/leagues"]').forEach((a) => a.setAttribute("aria-current", "page"));
+    wireTable();
     initLeagues();
   });
 })();
