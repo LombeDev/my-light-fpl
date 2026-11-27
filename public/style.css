@@ -5957,3 +5957,255 @@ main > .mt-deadline {
     color: #cfd6df;
   }
 }
+
+
+
+/* League analysis tiles and the gameweek table. Colours follow light and dark mode.
+   The la- and lx- prefixes keep these styles separate from the earlier league styles. */
+.la,
+.lx {
+  margin-top: 18px;
+}
+.la-h,
+.lx-bar h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text, #111);
+}
+.la-gw {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #c9f7cf;
+  color: #14532d;
+  font-size: 12px;
+  font-weight: 800;
+  vertical-align: middle;
+}
+
+/* Analysis tiles */
+.la-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 900px) {
+  .la-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.la-tile {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.la-ico {
+  font-size: 20px;
+  line-height: 1.2;
+}
+.la-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #6b7280);
+}
+.la-val {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text, #111);
+}
+.la-sub {
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+.la-note {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted, #6b7280);
+}
+
+/* Table controls */
+.lx-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.lx-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.lx-tools input {
+  min-width: 200px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong, #cfd4dc);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--text, #111);
+}
+.lx-csv {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #c1124b;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Table */
+.lx-wrap {
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.lx-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.lx-table th,
+.lx-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--row, #eef0f3);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.lx-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface, #fff);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted, #6b7280);
+}
+.lx-table th.n,
+.lx-table td.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.lx-table td.n {
+  font-weight: 700;
+}
+.lx-table .lx-name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 170px;
+  background: var(--surface, #fff);
+}
+.lx-table thead .lx-name {
+  z-index: 4;
+}
+.lx-team {
+  font-weight: 800;
+  color: var(--text, #111);
+}
+.lx-mgr {
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+.lx-sort {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.lx-sort.is-on {
+  color: #c1124b;
+}
+.lx-view {
+  min-height: 30px;
+  margin-top: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong, #cfd4dc);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--text, #111);
+  font-size: 12px;
+  font-weight: 700;
+}
+.lx-table .up {
+  color: #1f9d55;
+}
+.lx-table .down {
+  color: #d64545;
+}
+.lx-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: #e0f2fe;
+  color: #0c4a6e;
+  font-size: 12px;
+  font-weight: 800;
+}
+.lx-move {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 12px;
+}
+.lx-out {
+  color: #d64545;
+}
+.lx-in {
+  color: #1f9d55;
+}
+.lx-moves {
+  min-width: 240px;
+  white-space: normal;
+}
+.lx-detail > td {
+  padding: 0;
+  white-space: normal;
+  background: var(--bg, #f6f7f9);
+}
+.lx-loading,
+.lx-empty {
+  margin: 0;
+  padding: 14px;
+  text-align: center;
+  color: var(--muted, #6b7280);
+}
+.lx-count {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+
+@media (prefers-color-scheme: dark) {
+  .lx-chip {
+    background: #103a52;
+    color: #bae6fd;
+  }
+  .la-gw {
+    background: #1f4a2b;
+    color: #d7f3dd;
+  }
+}
