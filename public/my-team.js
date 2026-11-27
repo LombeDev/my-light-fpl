@@ -1,6 +1,7 @@
-/* my-team.js: My team. Banner, deadline, the squad in a Fixtures view and a List view, side filters,
-   summary tiles, and the Rank Gains, Popular transfers, Threats and gameweek summary cards.
-   Each section runs on its own, so one failure does not stop the others. Page key: team-view. */
+/* my-team.js: My team, laid out like the live rank and points page.
+   Live points come from the live feed (window.FPL.live). Gameweek summary figures come from /api/gwstats.
+   Transfers come from /api/managers. Saves (SV pts) are not in FPL's public live feed, so they show a dash.
+   Each section runs on its own, so one failure does not stop the rest. Page key: team-view. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
@@ -11,107 +12,32 @@
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
-  const RISE_NET = 220000;
-  const PAGE = 10;
-  const LIST_GWS = 6;
+  const POS = { 1: "GKP", 2: "DEF", 3: "MID", 4: "FWD" };
 
-  const PILLS = [
-    ["all", "All"],
-    ["played", "Played"],
-    ["playing", "Playing"],
-    ["toplay", "To Play"],
-    ["didnt", "Didn't Play"],
-    ["bench", "In Your Bench"],
-  ];
-
-  const LIST_OPTIONS = [
-    ["points", "Points"],
-    ["price", "Current Price"],
-    ["form", "Form"],
-    ["own", "Ownership"],
-    ["change", "Price Change"],
-  ];
-
-  const POS_TITLE = { 1: "Goalkeeper", 2: "Defenders", 3: "Midfielders", 4: "Forwards" };
-
-  // Columns for each dropdown option. "key" reads a value from the row.
-  const COLS = {
-    points: [
-      { label: "Pts", full: "Points", key: "pts", cls: "lp-pts" },
-      { label: "MP", full: "Minutes played", key: "minutes" },
-      { label: "GS", full: "Goals scored", key: "gs" },
-      { label: "A", full: "Assists", key: "a" },
-      { label: "CS", full: "Clean sheets", key: "cs" },
-      { label: "GC", full: "Goals conceded", key: "gc" },
-      { label: "OG", full: "Own goals", key: "og" },
-      { label: "PS", full: "Penalties saved", key: "ps" },
-      { label: "PM", full: "Penalties missed", key: "pm" },
-      { label: "YC", full: "Yellow cards", key: "yc" },
-      { label: "RC", full: "Red cards", key: "rc" },
-    ],
-    price: [
-      { label: "CP", full: "Current price", key: "price" },
-      { label: "PP", full: "Predicted price", key: "dash" },
-      { label: "SP", full: "Selling price", key: "dash" },
-      { label: "F", full: "Form", key: "form" },
-      { label: "TP", full: "Total points", key: "total" },
-      { label: "Fix", full: "Next fixture", key: "fix" },
-    ],
-    form: [
-      { label: "F", full: "Form", key: "form" },
-      { label: "GWP", full: "Gameweek points", key: "pts" },
-      { label: "TP", full: "Total points", key: "total" },
-      { label: "Fix", full: "Next fixture", key: "fix" },
-    ],
-    own: [
-      { label: "Own", full: "Ownership", key: "own" },
-      { label: "Trend", full: "Ownership trend", key: "trend" },
-      { label: "OP", full: "Overall points", key: "total" },
-      { label: "Fix", full: "Next fixture", key: "fix" },
-    ],
-    change: [
-      { label: "Progress", full: "Progress towards price change", key: "progress" },
-      { label: "Predicted", full: "Predicted progress", key: "predicted" },
-      { label: "Status", full: "Status", key: "status" },
-      { label: "Trend", full: "Ownership trend", key: "trend" },
-      { label: "CP", full: "Current price", key: "price" },
-    ],
+  const st = {
+    snap: null,
+    session: null,
+    gw: 1,           // the current gameweek, which is the one with live points
+    me: null,
+    picks: null,
+    mgr: null,       // this gameweek's transfers and hits, from /api/managers
+    stats: null,     // Map of player id to gameweek stats, or null if unavailable
+    byId: new Map(),
+    teamById: new Map(),
+    namesOn: true,
   };
-
-  let snap = null;
-  let session = null;
-  let gw = 1;      // gameweek being viewed
-  let liveGw = 1;  // current gameweek, the one with live points and xPts
-  let me = null;
-  let picks = null;
-  let sample = null;
-  let around = null;
-  let byId = new Map();
-  let teamById = new Map();
-  let posById = new Map();
-  let threatFilter = "all";
-  let threatShown = PAGE;
-  let side = "players";
-  let view = "fixtures";      // "fixtures" or "list"
-  let listSort = "points";    // dropdown option for the List view
-  let listMenuOpen = false;
-  let listHelpOpen = false;
-  const gwStatsCache = new Map();   // gameweek -> { map: Map(playerId -> stats), error: bool }
-  const gwStatsPending = new Map(); // gameweek -> promise while loading
-  const filters = { own: 100, price: 16, pos: 0, club: 0, sort: "default", name: "" };
 
   const readyP = new Promise((resolve) =>
     document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
   );
 
-  // Runs one section of the page. If it fails, the error is logged and the note shows which section
-  // broke, and the rest of the page still loads.
+  // Runs one section. If it fails, the error is logged and the note says which section broke.
   function safe(name, fn) {
     try {
       fn();
     } catch (err) {
       console.error(`${name} failed:`, err);
-      set("team-note", `${name} could not load: ${err.message}`);
+      set("mtl-note", `${name} could not load: ${err.message}`);
     }
   }
 
@@ -134,7 +60,7 @@
     }
   }
 
-  function signOutToLogin() {
+  function signOut() {
     localStorage.removeItem("fpl.session");
     location.assign("/login");
   }
@@ -143,16 +69,16 @@
     document.querySelectorAll('nav a[href="/team"]').forEach((a) => a.setAttribute("aria-current", "page"));
   }
 
-  const fmt = (n) => (n === null || n === undefined ? "–" : Number(n).toLocaleString());
-  const progressOf = (p) => ((p.transfers_in - p.transfers_out) / RISE_NET) * 100;
-  const priceLabel = (v) => `${Number(v).toFixed(1).replace(/\.0$/, "")}m`;
-  const money = (tenths) => `£${(tenths / 10).toFixed(1)}m`;
+  const liveMap = () => window.FPL?.live?.() ?? new Map();
+  const nameOf = (id) => st.byId.get(id)?.web_name ?? "Unknown";
+  const timeNow = () => new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-  // ---------- Club state for a gameweek ----------
-  function clubStates(g) {
+  // Each club's state in the current gameweek: finished, started (some matches begun), or sleep.
+  // A club with no fixture this gameweek is missing from the map.
+  function clubStates() {
     const seen = new Map();
-    for (const f of snap.fixtures) {
-      if (f.gw !== g) continue;
+    for (const f of st.snap.fixtures) {
+      if (f.gw !== st.gw) continue;
       for (const t of [f.home, f.away]) {
         const list = seen.get(t) ?? [];
         list.push(f.finished ? "finished" : f.started ? "started" : "sleep");
@@ -168,894 +94,232 @@
     return out;
   }
 
-  // ---------- Deadline ----------
-  // The next deadline is the earliest one still in the future. This skips a gameweek that has already
-  // passed its deadline but is still marked as current. If the snapshot has no future deadline, it falls
-  // back to the earliest first kickoff still in the future, since FPL's deadline is the first kickoff.
-  function nextDeadlineMs(snapshot, now = Date.now()) {
-    let best = null;
-    for (const e of snapshot.events) {
-      if (!e.deadline_time) continue;
-      const ms = Date.parse(e.deadline_time);
-      if (Number.isNaN(ms) || ms <= now) continue;
-      if (best === null || ms < best) best = ms;
-    }
-    if (best !== null) return best;
+  // Everything a row needs: points, multiplier, total, bonus, defensive contributions and status.
+  function rowData(pk, live, states) {
+    const p = st.byId.get(pk.element);
+    const d = live.get(pk.element);
+    const mult = pk.multiplier ?? 1;
+    const pts = d ? d.p : 0;
+    const minutes = d ? d.m : 0;
+    const fixState = p ? states.get(p.team) : undefined;
 
-    const firstKick = new Map(); // gameweek -> its first kickoff
-    for (const f of snapshot.fixtures) {
-      if (f.gw === null || !f.kickoff) continue;
-      const ms = Date.parse(f.kickoff);
-      if (Number.isNaN(ms)) continue;
-      if (!firstKick.has(f.gw) || ms < firstKick.get(f.gw)) firstKick.set(f.gw, ms);
-    }
-    for (const ms of firstKick.values()) {
-      if (ms > now && (best === null || ms < best)) best = ms;
-    }
-    return best;
-  }
+    let status;
+    if (!p) status = "Unknown";
+    else if (minutes > 0) status = fixState === "finished" ? "Played" : "Playing";
+    else if (fixState === "finished") status = "Did not play";
+    else if (fixState === undefined) status = "No fixture";
+    else status = "Yet to play";
 
-  function setupDeadline() {
-    const pad = (n) => String(n).padStart(2, "0");
-
-    const tick = () => {
-      const target = nextDeadlineMs(snap);
-      if (!target) {
-        set("dl-label", "Deadline not available");
-        return;
-      }
-      const when = new Date(target)
-        .toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
-        .replace(",", "");
-      set("dl-label", `Deadline ${when}`);
-
-      const ms = target - Date.now();
-      set("dl-d", pad(Math.floor(ms / 86400000)));
-      set("dl-h", pad(Math.floor((ms % 86400000) / 3600000)));
-      set("dl-m", pad(Math.floor((ms % 3600000) / 60000)));
-      set("dl-s", pad(Math.floor((ms % 60000) / 1000)));
-    };
-    tick();
-    setInterval(tick, 1000);
-  }
-
-  // ---------- Banner ----------
-  function renderBanner() {
-    set("gw-title", `Gameweek ${gw}`);
-    const prev = $("gw-prev");
-    if (prev) prev.disabled = gw <= 1;
-    const next = $("gw-next");
-    if (next) next.disabled = gw >= (snap.events.length || 38);
-  }
-
-  // ---------- Summary tiles, under the grid ----------
-  function renderTiles() {
-    const xi = picks?.picks.filter((x) => x.position <= 11) ?? [];
-    const used = picks?.entry_history?.event_transfers ?? 0;
-    const cost = picks?.entry_history?.event_transfers_cost ?? 0;
-    const free = picks?.entry_history?.free_transfers ?? null;
-    const bank = picks?.entry_history?.bank ?? null;
-
-    set("tile-tr", free === null ? "–" : `${used} / ${free}`);
-    set("tile-cost", `${cost} pts`);
-    set("tile-bank", bank === null ? "–" : `£${(bank / 10).toFixed(1)}m`);
-
-    const xpts = xi.reduce((s, pk) => {
-      const p = byId.get(pk.element);
-      return s + (p ? Number(p.ep_this ?? 0) * (pk.multiplier ?? 1) : 0);
-    }, 0);
-    set("tile-xpts", xi.length && gw === liveGw ? xpts.toFixed(1) : "–");
-  }
-
-  // ---------- Squad rows after the side filters (unsorted) ----------
-  function squadRows() {
-    const needle = filters.name.trim().toLowerCase();
-    return picks.picks
-      .map((pk) => ({ pk, p: byId.get(pk.element), isBench: pk.position > 11 }))
-      .filter((r) => r.p)
-      .filter(
-        ({ p }) =>
-          (!filters.pos || p.element_type === filters.pos) &&
-          (!filters.club || p.team === filters.club) &&
-          (!needle || p.web_name.toLowerCase().includes(needle)) &&
-          p.selected_by_percent <= filters.own &&
-          p.now_cost / 10 <= filters.price + 1e-9,
-      );
-  }
-
-  // ---------- Fixtures view ----------
-  function fdrClass(d) {
-    return d <= 2 ? "fdr-e" : d === 3 ? "fdr-m" : d === 4 ? "fdr-h" : d >= 5 ? "fdr-x" : "fdr-b";
-  }
-
-  // "team:gw" -> [{ label, home, diff }] for every club, from the viewed gameweek onwards.
-  function fixtureMap(lastGw) {
-    const map = new Map();
-    const sh = (id) => teamById.get(id)?.short ?? "";
-    const add = (team, g, entry) => {
-      const k = `${team}:${g}`;
-      if (!map.has(k)) map.set(k, []);
-      map.get(k).push(entry);
-    };
-    for (const f of snap.fixtures) {
-      if (f.gw === null || f.gw < gw || f.gw > lastGw) continue;
-      add(f.home, f.gw, { label: sh(f.away), home: true, diff: f.home_difficulty });
-      add(f.away, f.gw, { label: sh(f.home), home: false, diff: f.away_difficulty });
-    }
-    return map;
-  }
-
-  // Uppercase when the player's club is at home, lowercase when away.
-  function cellFixtures(list) {
-    if (!list.length) return `<span class="fx fdr-b">BLANK</span>`;
-    return list
-      .map((x) => {
-        const text = x.home ? x.label.toUpperCase() : x.label.toLowerCase();
-        return `<span class="fx ${fdrClass(x.diff)}">${esc(text)}</span>`;
-      })
-      .join("");
-  }
-
-  function xpStrip(xp) {
-    if (xp === null || Number.isNaN(xp)) return `<span class="xp xp-none">–</span>`;
-    return `<span class="xp ${xp < 2 ? "xp-low" : "xp-mid"}">${xp.toFixed(2)} xPts</span>`;
-  }
-
-  function renderFixtures() {
-    const lastGw = Math.min(snap.events.length || 38, gw + LIST_GWS - 1);
-    const gws = [];
-    for (let g = gw; g <= lastGw; g++) gws.push(g);
-    const fixtures = fixtureMap(lastGw);
-
-    const sorters = {
-      points: (a, b) => b.p.total_points - a.p.total_points,
-      price: (a, b) => b.p.now_cost - a.p.now_cost,
-      form: (a, b) => b.p.form - a.p.form,
-      own: (a, b) => b.p.selected_by_percent - a.p.selected_by_percent,
-    };
-    const rows = squadRows();
-    if (sorters[filters.sort]) rows.sort(sorters[filters.sort]);
-
-    const body = rows.length
-      ? rows
-          .map(({ pk, p, isBench }) => {
-            const t = teamById.get(p.team);
-            const gk = p.element_type === 1;
-            const img = t?.code
-              ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
-              : "";
-            const badge = pk.is_captain
-              ? `<span class="mt-cap-s">C</span>`
-              : pk.is_vice_captain
-                ? `<span class="mt-cap-s is-v">V</span>`
-                : "";
-
-            const cells = gws
-              .map((g) => {
-                const list = fixtures.get(`${p.team}:${g}`) ?? [];
-                const xp = g === liveGw && p.ep_this !== undefined && p.ep_this !== null ? Number(p.ep_this) : null;
-                return `<td class="mt-cell">${cellFixtures(list)}${xpStrip(xp)}</td>`;
-              })
-              .join("");
-
-            return `<tr class="${isBench ? "is-bench" : ""}">
-              <td class="mt-lname">
-                <div class="mt-lplayer">
-                  <span class="pl-info" aria-hidden="true">i</span>
-                  ${img}
-                  <div class="mt-lpname">${esc(p.web_name)}${badge}</div>
-                </div>
-              </td>
-              ${cells}
-            </tr>`;
-          })
-          .join("")
-      : `<tr><td colspan="${gws.length + 1}" class="mt-empty">No players match these filters.</td></tr>`;
-
-    $("mt-view").innerHTML = `<div class="mt-list-wrap"><table class="mt-list">
-      <thead><tr>
-        <th class="mt-lname">Player</th>
-        ${gws.map((g) => `<th class="mt-gwh">${g}</th>`).join("")}
-      </tr></thead>
-      <tbody>${body}</tbody>
-    </table></div>`;
-  }
-
-  // ---------- List view ----------
-  function loadGwStats(g) {
-    if (gwStatsCache.has(g)) return Promise.resolve();
-    if (!gwStatsPending.has(g)) {
-      const p = api(`/gwstats/${g}`)
-        .then((d) => gwStatsCache.set(g, { map: new Map(d.elements.map((e) => [e.id, e])), error: false }))
-        .catch(() => gwStatsCache.set(g, { map: new Map(), error: true }))
-        .finally(() => gwStatsPending.delete(g));
-      gwStatsPending.set(g, p);
-    }
-    return gwStatsPending.get(g);
-  }
-
-  // Price change status, using the same thresholds as the Prices page.
-  function statusOf(progressPct) {
-    const a = Math.abs(progressPct);
-    if (a >= 95) return "Likely to change";
-    if (a >= 80) return "Possible";
-    return "Unlikely to change";
-  }
-
-  // Next fixture for a club, as a short label such as "ARS (H)".
-  function fixtureUpcoming(teamId) {
-    const sh = (id) => teamById.get(id)?.short ?? "";
-    const next = snap.fixtures
-      .filter((f) => !f.finished && (f.home === teamId || f.away === teamId))
-      .sort((a, b) => (a.kickoff ?? "").localeCompare(b.kickoff ?? ""))[0];
-    if (!next) return [];
-    return next.home === teamId ? [`${sh(next.away)} (H)`] : [`${sh(next.home)} (A)`];
-  }
-
-  // The value shown in one column for one player.
-  function cellValue(col, p, s) {
-    const key = col.key;
-    if (key === "dash") return "–";
-    if (key === "price") return money(p.now_cost);
-    if (key === "form") return Number(p.form).toFixed(1);
-    if (key === "total") return fmt(p.total_points);
-    if (key === "own") return `${Number(p.selected_by_percent).toFixed(1)}%`;
-    if (key === "trend") {
-      const n = p.transfers_in - p.transfers_out;
-      if (!n) return `<span class="lp-trend is-flat">–</span>`;
-      return n > 0
-        ? `<span class="lp-trend is-up">▲ Up</span>`
-        : `<span class="lp-trend is-down">▼ Down</span>`;
-    }
-    if (key === "progress" || key === "predicted") {
-      const v = progressOf(p);
-      return `<span class="lp-pill ${v >= 0 ? "is-up" : "is-down"}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
-    }
-    if (key === "status") return `<span class="lp-status">${statusOf(progressOf(p))}</span>`;
-    if (key === "fix") {
-      const list = fixtureUpcoming(p.team);
-      return list.length ? esc(list[0]) : "–";
-    }
-    if (key === "pts") return s ? s.pts : "–";
-    if (["minutes", "gs", "a", "cs", "gc", "og", "ps", "pm", "yc", "rc"].includes(key)) {
-      return s ? s[key] : "–";
-    }
-    return "–";
-  }
-
-  // Sort within a position group, for the chosen dropdown option. Ties fall back to name.
-  function sortListRows(rows, option, stats) {
-    const val = {
-      points: (r) => stats.get(r.p.id)?.pts ?? -1,
-      price: (r) => r.p.now_cost,
-      form: (r) => Number(r.p.form),
-      own: (r) => r.p.selected_by_percent,
-      change: (r) => r.p.cost_change_window,
-    }[option] ?? (() => 0);
-    rows.sort((a, b) => val(b) - val(a) || a.p.web_name.localeCompare(b.p.web_name));
-    return rows;
-  }
-
-  function nameCell(pk, p) {
-    const t = teamById.get(p.team);
-    const gk = p.element_type === 1;
-    const img = t?.code
-      ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
-      : "";
-    const badge = pk.is_captain
-      ? `<span class="lp-cap">C</span>`
-      : pk.is_vice_captain
-        ? `<span class="lp-cap is-v">V</span>`
-        : "";
-    const flag =
-      p.status === "a"
-        ? `<span class="lp-info" aria-hidden="true">i</span>`
-        : `<span class="lp-warn" role="img" aria-label="Flagged" title="Flagged">⚠</span>`;
-    return `<div class="lp-player">${flag}${img}<div>
-      <div class="lp-pname">${esc(p.web_name)}${badge}</div>
-      <div class="lp-sub">${esc(t?.short ?? "")} • ${esc(posById.get(p.element_type) ?? "")}</div>
-    </div></div>`;
-  }
-
-  function renderList() {
-    if (!picks) {
-      $("mt-view").innerHTML = `<p class="muted">Picks for gameweek ${gw} are not available yet.</p>`;
-      return;
-    }
-
-    const cols = COLS[listSort] ?? COLS.points;
-    const entry = gwStatsCache.get(gw);
-    const needsGwStats = cols.some((c) => c.key === "pts" || ["minutes", "gs", "a", "cs", "gc", "og", "ps", "pm", "yc", "rc"].includes(c.key));
-
-    // Gameweek stats are needed for the Points view and the GWP column. Load them, then draw again.
-    if (!entry && needsGwStats) {
-      $("mt-view").innerHTML = `<p class="mt-empty">Loading stats…</p>`;
-      loadGwStats(gw).then(() => {
-        if (view === "list") renderView();
-      });
-      return;
-    }
-    if (entry?.error && needsGwStats) {
-      $("mt-view").innerHTML = `<p class="mt-empty">Stats for gameweek ${gw} are not available yet.</p>`;
-      return;
-    }
-
-    const stats = entry?.map ?? new Map();
-    const rows = squadRows();
-    const span = cols.length + 1;
-
-    const head = `<tr>
-      <th class="lp-name-h">Player</th>
-      ${cols.map((c) => `<th class="n"><abbr title="${c.full}">${c.label}</abbr></th>`).join("")}
-    </tr>`;
-
-    let body = "";
-    for (const type of [1, 2, 3, 4]) {
-      const group = sortListRows(rows.filter((r) => r.p.element_type === type), listSort, stats);
-      if (!group.length) continue;
-      body += `<tr class="lp-group"><th colspan="${span}">${POS_TITLE[type]}</th></tr>`;
-      body += group
-        .map(({ pk, p }) => {
-          const s = stats.get(p.id);
-          const cells = cols
-            .map((c) => `<td class="n${c.cls ? " " + c.cls : ""}">${cellValue(c, p, s)}</td>`)
-            .join("");
-          return `<tr><td class="lp-name">${nameCell(pk, p)}</td>${cells}</tr>`;
-        })
-        .join("");
-    }
-
-    if (!body) body = `<tr><td colspan="${span}" class="mt-empty">No players match these filters.</td></tr>`;
-
-    $("mt-view").innerHTML = `<div class="lp-wrap"><table class="lp-table">
-      <thead>${head}</thead>
-      <tbody>${body}</tbody>
-    </table></div>`;
-  }
-
-  // ---------- View switch and dropdown ----------
-  function renderListControls() {
-    const isList = view === "list";
-    $("view-fx").classList.toggle("is-on", !isList);
-    $("view-pts").classList.toggle("is-on", isList);
-    $("view-fx").setAttribute("aria-pressed", String(!isList));
-    $("view-pts").setAttribute("aria-pressed", String(isList));
-
-    $("pts-dd").hidden = !isList;
-    $("pts-help-btn").hidden = !isList;
-    $("pts-help-btn").setAttribute("aria-expanded", String(listHelpOpen));
-    $("pts-help-text").hidden = !isList || !listHelpOpen;
-
-    const label = LIST_OPTIONS.find(([k]) => k === listSort)?.[1] ?? "Points";
-    const btn = $("pts-dd-btn");
-    btn.innerHTML = `${esc(label)} <span aria-hidden="true">${listMenuOpen ? "▴" : "▾"}</span>`;
-    btn.setAttribute("aria-expanded", String(listMenuOpen));
-
-    const menu = $("pts-dd-menu");
-    menu.hidden = !listMenuOpen;
-    menu.innerHTML = LIST_OPTIONS.map(
-      ([k, l]) =>
-        `<button type="button" class="lp-opt${k === listSort ? " is-on" : ""}" role="option" aria-selected="${k === listSort}" data-sort="${k}">${esc(l)}</button>`,
-    ).join("");
-  }
-
-  function renderView() {
-    renderListControls();
-    if (view === "list") renderList();
-    else renderFixtures();
-  }
-
-  // ---------- Side panel ----------
-  function renderSide() {
-    document.querySelectorAll("[data-side]").forEach((b) => {
-      const on = b.dataset.side === side;
-      b.classList.toggle("is-on", on);
-      b.setAttribute("aria-selected", String(on));
-    });
-
-    const playersBox = $("side-players");
-    const msg = $("side-msg");
-    if (playersBox) playersBox.hidden = side !== "players";
-    if (msg) {
-      msg.hidden = side === "players";
-      msg.textContent =
-        side === "watch"
-          ? "Your watchlist will appear here. Add players from the Prices page."
-          : "The gameweek summary is shown below the squad.";
-    }
-  }
-
-  function wireSide() {
-    document.querySelectorAll("[data-side]").forEach((b) =>
-      b.addEventListener("click", () => {
-        side = b.dataset.side;
-        renderSide();
-      }),
-    );
-
-    $("own").addEventListener("input", (e) => {
-      filters.own = Number(e.target.value);
-      set("own-val", `${filters.own}%`);
-      renderView();
-    });
-    $("price").addEventListener("input", (e) => {
-      filters.price = Number(e.target.value);
-      set("price-val", priceLabel(filters.price));
-      renderView();
-    });
-    $("f-pos").addEventListener("change", (e) => {
-      filters.pos = Number(e.target.value);
-      renderView();
-    });
-    $("f-club").addEventListener("change", (e) => {
-      filters.club = Number(e.target.value);
-      renderView();
-    });
-    $("f-sort").addEventListener("change", (e) => {
-      filters.sort = e.target.value;
-      renderView();
-    });
-    $("f-name").addEventListener("input", (e) => {
-      filters.name = e.target.value;
-      renderView();
-    });
-  }
-
-  // Club choices come from the squad, so they change with the gameweek.
-  function fillClubs() {
-    const sel = $("f-club");
-    if (!sel) return;
-    const clubs = new Map();
-    for (const pk of picks?.picks ?? []) {
-      const p = byId.get(pk.element);
-      if (p) clubs.set(p.team, teamById.get(p.team)?.name ?? "");
-    }
-    sel.innerHTML =
-      `<option value="0">Select Club</option>` +
-      [...clubs.entries()]
-        .sort((a, b) => a[1].localeCompare(b[1]))
-        .map(([id, name]) => `<option value="${id}">${esc(name)}</option>`)
-        .join("");
-    sel.value = clubs.has(filters.club) ? String(filters.club) : "0";
-    filters.club = Number(sel.value);
-  }
-
-  // ---------- Rank Gains ----------
-  function placesPerPoint(rows, myRank) {
-    const list = (rows ?? []).filter((r) => r.rank && r.total !== undefined);
-    if (list.length >= 2) {
-      const ranks = list.map((r) => r.rank);
-      const totals = list.map((r) => r.total);
-      const dRank = Math.max(...ranks) - Math.min(...ranks);
-      const dPts = Math.max(...totals) - Math.min(...totals);
-      if (dRank > 0 && dPts > 0) return dRank / dPts;
-    }
-    return myRank ? myRank / 1500 : 0;
-  }
-
-  function eachPtFor(playerId, density) {
-    if (!density) return 0;
-    const eo = sample?.sampled ? (sample.owned[playerId] ?? 0) + (sample.captain?.[playerId] ?? 0) : 0;
-    return Math.round(density * Math.max(0, 1 - Math.min(eo, 100) / 100));
-  }
-
-  function renderRankGains() {
-    const box = $("rg-body");
-    if (!box) return;
-    if (!picks) {
-      box.innerHTML = `<p class="rg-empty">Picks are not available yet.</p>`;
-      return;
-    }
-    const live = window.FPL?.live?.() ?? new Map();
-    const density = placesPerPoint(around?.rows, me?.summary_overall_rank);
-
-    const rows = picks.picks
-      .map((pk) => {
-        const p = byId.get(pk.element);
-        if (!p) return null;
-        const each = eachPtFor(p.id, density);
-        const base = live.get(p.id)?.p ?? 0;
-        const gain = Math.round(base * (pk.multiplier ?? 1) * each);
-        return { p, each, base, gain, progress: progressOf(p) };
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.gain - a.gain || a.p.web_name.localeCompare(b.p.web_name));
-
-    box.innerHTML = rows.length ? rows.map(rankRow).join("") : `<p class="rg-empty">No players to show.</p>`;
-    box.querySelectorAll("[data-w]").forEach((el) => {
-      el.style.width = `${el.dataset.w}%`;
-    });
-  }
-
-  function rankRow(r) {
-    const t = teamById.get(r.p.team);
-    const gk = r.p.element_type === 1;
-    const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
-    const up = r.progress >= 0;
-    const width = Math.min(100, Math.abs(r.progress));
-    return `<div class="rg-row">
-      <div class="rg-shirt">${img}</div>
-      <div class="rg-main">
-        <div class="rg-name">${esc(r.p.web_name)}</div>
-        <div class="rg-each">Each pt: ${r.each ? r.each.toLocaleString() : "–"} <span class="rg-dot" aria-hidden="true"></span></div>
-      </div>
-      <div class="rg-gainbox">
-        <div class="rg-pts">${r.base}</div>
-        <div class="rg-gain${r.gain > 0 ? " is-up" : ""}">↗ ${r.gain.toLocaleString()}</div>
-      </div>
-      <div class="rg-prog">
-        <div class="rg-track"><span class="${up ? "is-up" : "is-down"}" data-w="${width.toFixed(1)}"></span></div>
-        <div class="rg-plabel ${up ? "up" : "down"}">${Math.abs(r.progress).toFixed(1)}% ${up ? "↑" : "↓"}</div>
-      </div>
-    </div>`;
-  }
-
-  // ---------- Gameweek summary ----------
-  function summaryData() {
-    const live = window.FPL?.live?.() ?? new Map();
-    const xi = picks.picks.filter((x) => x.position <= 11);
-    const bench = picks.picks.filter((x) => x.position > 11);
-    const liveXi = xi.reduce((s, pk) => s + (live.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1), 0);
-    const benchPts = bench.reduce((s, pk) => s + (live.get(pk.element)?.p ?? 0), 0);
-    const rank = me.summary_overall_rank ?? null;
-    const prevRank = (around?.rows ?? []).find((r) => r.you)?.rank ?? rank;
-    const avgGain = around?.rows?.length ? around.rows.reduce((s, r) => s + (r.gw ?? 0), 0) / around.rows.length : 0;
-    const starters = xi
-      .map((pk) => {
-        const p = byId.get(pk.element);
-        if (!p) return null;
-        const pts = (live.get(pk.element)?.p ?? 0) * (pk.multiplier ?? 1);
-        return { p, pts, gain: pts - avgGain / 2 };
-      })
-      .filter(Boolean);
-    starters.sort((a, b) => b.gain - a.gain);
-    const star = starters[0] ?? null;
-    const flop = starters.at(-1) ?? null;
-    const killer = starters.slice().sort((a, b) => a.gain - b.gain)[0] ?? null;
-    const changePct = rank && prevRank ? ((prevRank - rank) / prevRank) * 100 : 0;
-    const topPct = rank && snap.totalManagers ? (rank / snap.totalManagers) * 100 : null;
     return {
-      liveXi,
-      benchPts,
-      total: me.summary_overall_points ?? 0,
-      rank,
-      prevRank,
-      ranksGained: prevRank && rank ? prevRank - rank : 0,
-      changePct,
-      topPct,
-      star,
-      flop,
-      killer,
+      p,
+      pk,
+      pts,
+      mult,
+      total: pts * mult,
+      bn: d ? (d.bn ?? 0) : 0,
+      dc: d ? (d.dc ?? null) : null,
+      status,
     };
   }
 
-  function summaryCard(kind, label, icon, pick) {
-    const img = pick
-      ? (() => {
-          const t = teamById.get(pick.p.team);
-          const gk = pick.p.element_type === 1;
-          return t?.code ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">` : "";
-        })()
+  // ---------- Live rank card ----------
+  function renderRank(xi, live, states) {
+    const me = st.me;
+    const gwLive = xi.reduce((sum, pk) => sum + rowData(pk, live, states).total, 0);
+    set("mtl-name", `${me.player_first_name ?? ""} ${me.player_last_name ?? ""}`.trim() || me.name);
+    set("mtl-team", me.name);
+    set("mtl-rank", me.summary_overall_rank ? Number(me.summary_overall_rank).toLocaleString() : "–");
+    set("mtl-gwlive", String(gwLive));
+    set("mtl-total", String(me.summary_overall_points ?? 0));
+  }
+
+  // ---------- Player rows ----------
+  function rowHtml(r) {
+    const t = st.teamById.get(r.p.team);
+    const gk = r.p.element_type === 1;
+    const img = t?.code
+      ? `<img class="mtl-shirt" src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
       : "";
-    const figure = pick
-      ? kind === "killer"
-        ? `Loss: ${pick.pts.toFixed(2)} pts`
-        : `Gain: ${pick.pts >= 0 ? "+" : ""}${pick.pts.toFixed(2)} pts`
-      : "";
-    return `<div class="gs-card is-${kind}">
-      <div class="gs-cardhead"><span aria-hidden="true">${icon}</span> ${label}</div>
-      <div class="gs-shirt">${img}</div>
-      <div class="gs-name">${pick ? esc(pick.p.web_name) : "–"}</div>
-      <div class="gs-num">${pick ? pick.pts.toFixed(0) : "–"}</div>
-      <div class="gs-fig">${figure}</div>
+    const badge = r.pk.is_captain
+      ? `<span class="mtl-cap">C</span>`
+      : r.pk.is_vice_captain
+        ? `<span class="mtl-cap is-v">V</span>`
+        : "";
+    const statusCls = r.status === "Played" ? "is-ok" : r.status === "Playing" ? "is-live" : "is-muted";
+    const dcText = r.dc === null ? "–" : String(r.dc);
+    const dcPos = typeof r.dc === "number" && r.dc > 0 ? " is-pos" : "";
+
+    return `<li class="mtl-row">
+      <div class="mtl-pic">${img}</div>
+      <div class="mtl-who">
+        <span class="mtl-pname">${esc(r.p.web_name)}${badge}</span>
+        <span class="mtl-psub">${POS[r.p.element_type] ?? ""} · ${esc(t?.short ?? "")}</span>
+        <span class="mtl-status ${statusCls}">${esc(r.status)}</span>
+      </div>
+      <div class="mtl-stat${r.bn > 0 ? " is-pos" : ""}"><span class="mtl-k">Bonus</span><b class="mtl-v">${r.bn}</b></div>
+      <div class="mtl-stat"><span class="mtl-k">SV pts</span><b class="mtl-v">–</b></div>
+      <div class="mtl-stat${dcPos}"><span class="mtl-k">DC pts</span><b class="mtl-v">${dcText}</b></div>
+      <div class="mtl-total"><b>${r.total}</b><span>Total</span></div>
+    </li>`;
+  }
+
+  function renderRows(id, list, live, states) {
+    const rows = list.map((pk) => rowData(pk, live, states));
+    $(id).innerHTML = rows.length ? rows.map(rowHtml).join("") : `<li class="mtl-empty">No players to show.</li>`;
+  }
+
+  // ---------- Transfers ----------
+  function renderTransfers() {
+    const box = $("mtl-tr");
+    const m = st.mgr;
+    if (!m) {
+      box.innerHTML = `<p class="mtl-empty">Transfers are not available yet.</p>`;
+      return;
+    }
+    const moves = m.transfers ?? [];
+    const ins = moves.map((t) => nameOf(t.inId));
+    const outs = moves.map((t) => nameOf(t.outId));
+    const hit = Number(m.hit) || 0;
+
+    box.innerHTML = `<div class="mtl-trgrid">
+      <div><span class="mtl-k">In</span><b>${ins.length}</b><small>${esc(ins.join(", ") || "None")}</small></div>
+      <div><span class="mtl-k">Out</span><b>${outs.length}</b><small>${esc(outs.join(", ") || "None")}</small></div>
+      <div><span class="mtl-k">Net pts (+/-)</span><b>${hit ? `−${hit}` : "0"}</b></div>
     </div>`;
   }
 
-  function renderSummary() {
-    const box = $("summary-slot");
-    if (!box) return;
-    if (!picks) {
-      box.innerHTML = "";
+  // ---------- Gameweek summary (starting XI only) ----------
+  function renderSummary(xi) {
+    const box = $("mtl-sum");
+    if (!st.stats) {
+      box.innerHTML = `<p class="mtl-empty">The gameweek summary is not available yet.</p>`;
       return;
     }
-    const d = summaryData();
-    const tile = (label, value, extra = "") =>
-      `<div class="gs-tile${extra}"><div class="gs-label">${label}</div><div class="gs-val">${value}</div></div>`;
-    box.innerHTML = `
-      <div class="gs-card-wrap">
-        <div class="gs-section-title"><span aria-hidden="true">🔢</span> Points gained: ${d.liveXi >= 0 ? "+" : ""}${d.liveXi}</div>
-        <div class="gs-grid">
-          ${tile("GW live", fmt(d.liveXi))}
-          ${tile("Total", fmt(d.total))}
-          ${tile("Bench", fmt(d.benchPts))}
-          ${tile("Safety", "–")}
-          ${tile("Off top 10k", "–")}
-          ${tile("Off 3m", "–")}
-        </div>
-        <div class="gs-section-title"><span aria-hidden="true">🌎</span> Ranks gained: ${d.ranksGained >= 0 ? "+" : ""}${fmt(d.ranksGained)}</div>
-        <div class="gs-grid">
-          ${tile("Pre-subs", fmt(d.rank))}
-          ${tile("Old rank", fmt(d.prevRank))}
-          ${tile("Change %", `${d.changePct >= 0 ? "+" : ""}${d.changePct.toFixed(2)}%`, " is-green")}
-          ${tile("Post-subs", fmt(d.rank))}
-          ${tile("GW rank", fmt(d.rank))}
-          ${tile("Rank %", d.topPct === null ? "–" : `Top ${d.topPct.toFixed(1)}%`)}
-        </div>
-        <div class="gs-cards">
-          ${summaryCard("star", "Star", "☆", d.star)}
-          ${summaryCard("flop", "Flop", "☹", d.flop)}
-          ${summaryCard("killer", "Killer", "☠", d.killer)}
-        </div>
-      </div>`;
+    const live = liveMap();
+    const ids = xi.map((pk) => pk.element);
+    const isDefOrGk = (id) => {
+      const p = st.byId.get(id);
+      return !!p && (p.element_type === 1 || p.element_type === 2);
+    };
+    const sum = (key, filter = () => true) =>
+      ids.reduce((total, id) => {
+        const e = st.stats.get(id);
+        return filter(id) && e ? total + (e[key] || 0) : total;
+      }, 0);
+    const dcTotal = ids.reduce((total, id) => total + (live.get(id)?.dc ?? 0), 0);
+
+    const items = [
+      ["Goals", sum("gs")],
+      ["Assists", sum("a")],
+      ["Clean sheets (GK+DEF)", sum("cs", isDefOrGk)],
+      ["DefCon pts", dcTotal],
+      ["Bonus", sum("bn")],
+      ["Pens missed / saved", `${sum("pm")}/${sum("ps")}`],
+      ["Conceded (GK+DEF)", sum("gc", isDefOrGk)],
+      ["Own goals", sum("og")],
+      ["Yellow cards", sum("yc")],
+      ["Red cards", sum("rc")],
+    ];
+
+    box.innerHTML = `<dl class="mtl-sumgrid">${items
+      .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(String(v))}</dd></div>`)
+      .join("")}</dl>`;
   }
 
-  // ---------- Popular transfers ----------
-  function chip(p) {
-    if (!p) return `<span class="pt-name">Unknown</span>`;
-    const t = teamById.get(p.team);
-    const img = t?.code ? `<img src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">` : "";
-    return `${img}<span class="pt-name">${esc(p.web_name)}</span>`;
-  }
+  // ---------- Drawing ----------
+  function draw() {
+    set("mtl-updated", `Updated ${timeNow()}`);
 
-  function renderPopular() {
-    const box = $("pop-body");
-    if (!box) return;
-    if (!sample?.sampled) {
-      box.innerHTML = `<p class="meta pt-empty">Popular transfers appear once the top 10k sample has data.</p>`;
-      return;
+    if (!st.picks) {
+      set("mtl-note", "Your picks for this gameweek are not available yet.");
     }
-    const rows = sample.transfers ?? [];
-    if (!rows.length) {
-      box.innerHTML = `<p class="meta pt-empty">Transfers are still being collected for this gameweek.</p>`;
-      return;
+
+    const live = liveMap();
+    const states = clubStates();
+    const xi = st.picks ? st.picks.picks.filter((pk) => pk.position <= 11) : [];
+    const bench = st.picks
+      ? st.picks.picks.filter((pk) => pk.position > 11).sort((a, b) => a.position - b.position)
+      : [];
+
+    safe("Live rank", () => renderRank(xi, live, states));
+    safe("Starting 11", () => renderRows("mtl-start", xi, live, states));
+    safe("Bench", () => renderRows("mtl-bench", bench, live, states));
+    safe("Transfers", renderTransfers);
+    safe("Summary", () => renderSummary(xi));
+  }
+
+  // ---------- Loading ----------
+  async function loadStats(gw) {
+    try {
+      const data = await api(`/gwstats/${gw}`);
+      return new Map((data.elements ?? []).map((e) => [e.id, e]));
+    } catch {
+      return null;
     }
-    box.innerHTML = rows
-      .map((t) => {
-        const net = t.net ?? 0;
-        const cls = net > 0 ? "is-up" : net < 0 ? "is-down" : "is-zero";
-        return `<div class="pt-row">
-          <span class="pt-pct">${t.pct.toFixed(2)}%</span>
-          <span class="pt-from">${chip(byId.get(t.out))}<span class="pt-cnt">${t.outCount ?? ""}</span></span>
-          <span class="pt-arrow" aria-hidden="true">→</span>
-          <span class="pt-to">${chip(byId.get(t.in))}<span class="pt-cnt">${t.inCount ?? ""}</span></span>
-          <span class="pt-num ${cls}">${net > 0 ? "+" : ""}${net}</span>
-        </div>`;
-      })
-      .join("");
-  }
-
-  // ---------- Main threats ----------
-  function threatRows() {
-    if (!sample?.sampled) return null;
-    const live = window.FPL?.live?.() ?? new Map();
-    const states = clubStates(liveGw);
-    const xi = new Set(picks.picks.filter((x) => x.position <= 11).map((x) => x.element));
-    const bench = new Set(picks.picks.filter((x) => x.position > 11).map((x) => x.element));
-    const rows = [];
-    for (const key of Object.keys(sample.owned)) {
-      const id = Number(key);
-      const p = byId.get(id);
-      if (!p) continue;
-      const eo = (sample.owned[key] ?? 0) + (sample.captain?.[key] ?? 0);
-      const delta = (xi.has(id) ? 100 : 0) - eo;
-      if (delta >= 0) continue;
-      const d = live.get(id);
-      const st = states.get(p.team);
-      let status;
-      if (st === undefined) status = "didnt";
-      else if (st === "finished") status = d && d.m === 0 ? "didnt" : "played";
-      else if (st === "started") status = "playing";
-      else status = "toplay";
-      const pts = d ? d.p : null;
-      rows.push({
-        p,
-        eo,
-        delta,
-        pts,
-        lost: pts === null ? null : (eo / 100) * pts,
-        status,
-        bench: bench.has(id),
-        progress: progressOf(p),
-      });
-    }
-    rows.sort((a, b) => (b.lost ?? -1) - (a.lost ?? -1) || a.delta - b.delta);
-    return rows;
-  }
-
-  const matchesFilter = (r) => {
-    if (threatFilter === "all") return true;
-    if (threatFilter === "bench") return r.bench;
-    return r.status === threatFilter;
-  };
-
-  function threatLine(r) {
-    const t = teamById.get(r.p.team);
-    const img = t?.code ? `<img class="th-shirt" src="${SHIRTS}/shirt_${t.code}-66.png" alt="" loading="lazy">` : "";
-    const up = r.progress >= 0;
-    return `<tr>
-      <td class="th-namecol"><div class="th-name">${img}<div>
-        <div class="th-pname">${esc(r.p.web_name)}</div>
-        <div class="th-sub">${esc(t?.short ?? "")} • ${esc(posById.get(r.p.element_type) ?? "")}</div>
-      </div></div></td>
-      <td class="n down">${r.delta.toFixed(1)}%</td>
-      <td class="n">${r.pts === null ? "–" : r.pts}</td>
-      <td class="n">${r.lost === null ? "–" : r.lost.toFixed(1)}</td>
-      <td class="n"><span class="${up ? "up" : "down"}">${Math.abs(r.progress).toFixed(1)}% ${up ? "↑" : "↓"}</span></td>
-    </tr>`;
-  }
-
-  function renderThreats() {
-    const pills = $("th-pills");
-    if (!pills) return;
-    pills.innerHTML = PILLS.map(
-      ([key, label]) =>
-        `<button type="button" class="th-pill${threatFilter === key ? " is-on" : ""}" data-filter="${key}" aria-pressed="${threatFilter === key}"><span class="th-dot" aria-hidden="true"></span>${label}</button>`,
-    ).join("");
-
-    const all = threatRows();
-    if (all === null) {
-      set("th-note", "Threats appear once the top 10k sample has data.");
-      $("th-head").innerHTML = "";
-      $("th-body").innerHTML = "";
-      $("th-more").hidden = true;
-      return;
-    }
-    set("th-note", "");
-    $("th-head").innerHTML = `<tr>
-      <th class="th-namecol">Player</th>
-      <th class="n">EO Δ</th>
-      <th class="n">Score</th>
-      <th class="n">Pts Lost</th>
-      <th class="n">Progress towards price rise/fall</th>
-    </tr>`;
-    const list = all.filter(matchesFilter);
-    const shown = list.slice(0, threatShown);
-    $("th-body").innerHTML = shown.length ? shown.map(threatLine).join("") : `<tr><td colspan="5">No players match.</td></tr>`;
-    const btn = $("th-more");
-    btn.hidden = list.length <= threatShown;
-    btn.textContent = `Show more (${Math.max(0, list.length - threatShown)} left)`;
-  }
-
-  // ---------- Loading and drawing ----------
-  async function loadGw(g) {
-    picks = await api(`/picks/${session.entryId}/${g}`).catch(() => null);
   }
 
   async function loadAll() {
-    const auth = { headers: { Authorization: `Bearer ${session.token}` } };
-    const [meRes, sampleRes, aroundRes] = await Promise.all([
+    const auth = { headers: { Authorization: `Bearer ${st.session.token}` } };
+    const [meRes, picksRes, mgrRes, stats] = await Promise.all([
       api("/me", auth),
-      api("/sample").catch(() => null),
-      api(`/around/${session.entryId}`).catch(() => null),
+      api(`/picks/${st.session.entryId}/${st.gw}`).catch(() => null),
+      api(`/managers?ids=${st.session.entryId}`).catch(() => null),
+      loadStats(st.gw),
     ]);
-    me = meRes.entry;
-    sample = sampleRes;
-    around = aroundRes;
-    await loadGw(gw);
+    st.me = meRes.entry;
+    st.picks = picksRes;
+    st.mgr = mgrRes?.managers?.[0] ?? null;
+    st.stats = stats;
+    set("mtl-note", "");
     draw();
   }
 
-  function draw() {
-    const e = me;
-    set(
-      "team-meta",
-      `${e.name} · ${e.player_first_name} ${e.player_last_name} · ${e.summary_overall_points} pts · rank ${
-        e.summary_overall_rank ? Number(e.summary_overall_rank).toLocaleString() : "–"
-      }`,
-    );
-    set("team-note", gw !== liveGw ? "Viewing a past or upcoming gameweek." : "");
-
-    safe("Club filter", fillClubs);
-    safe("Banner", renderBanner);
-    safe("Summary tiles", renderTiles);
-    safe("Squad", renderView);
-    safe("Side panel", renderSide);
-    safe("Gameweek summary", renderSummary);
-    safe("Rank gains", renderRankGains);
-    safe("Popular transfers", renderPopular);
-    safe("Main threats", renderThreats);
+  async function refresh() {
+    set("mtl-note", "Refreshing…");
+    try {
+      await loadAll();
+    } catch (err) {
+      if (err.status === 401) return signOut();
+      set("mtl-note", `Could not load your team. ${err.message}`);
+    }
   }
 
-  function wireControls() {
-    $("gw-prev").addEventListener("click", async () => {
-      gw = Math.max(1, gw - 1);
-      await loadGw(gw);
-      draw();
+  // ---------- Wiring ----------
+  function wire() {
+    $("mtl-names").addEventListener("change", (e) => {
+      st.namesOn = e.target.checked;
+      $("mtl").classList.toggle("is-names-off", !st.namesOn);
     });
-    $("gw-next").addEventListener("click", async () => {
-      gw = Math.min(snap.events.length || 38, gw + 1);
-      await loadGw(gw);
-      draw();
-    });
-
-    $("view-fx").addEventListener("click", () => {
-      view = "fixtures";
-      listMenuOpen = false;
-      safe("Squad", renderView);
-    });
-    $("view-pts").addEventListener("click", () => {
-      view = "list";
-      safe("Squad", renderView);
-    });
-
-    $("pts-dd-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      listMenuOpen = !listMenuOpen;
-      safe("List options", renderListControls);
-    });
-    $("pts-dd-menu").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-sort]");
-      if (!b) return;
-      listSort = b.dataset.sort;
-      listMenuOpen = false;
-      safe("Squad", renderView);
-    });
-    document.addEventListener("click", (e) => {
-      if (listMenuOpen && !$("pts-dd").contains(e.target)) {
-        listMenuOpen = false;
-        safe("List options", renderListControls);
-      }
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && listMenuOpen) {
-        listMenuOpen = false;
-        safe("List options", renderListControls);
-      }
-    });
-
-    $("pts-help-btn").addEventListener("click", () => {
-      listHelpOpen = !listHelpOpen;
-      safe("List options", renderListControls);
-    });
-
-    $("th-pills").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-filter]");
-      if (!b) return;
-      threatFilter = b.dataset.filter;
-      threatShown = PAGE;
-      safe("Main threats", renderThreats);
-    });
-    $("th-more").addEventListener("click", () => {
-      threatShown += PAGE;
-      safe("Main threats", renderThreats);
-    });
+    $("mtl-refresh").addEventListener("click", refresh);
   }
 
   async function init() {
     setNavCurrent();
-    session = readSession();
-    if (!session) return location.assign("/login");
+    wire();
 
-    safe("Controls", wireControls);
-    safe("Side panel", wireSide);
-    safe("Deadline", setupDeadline);
-
-    try {
-      await loadAll();
-      document.addEventListener("fpl:live", () => {
-        if (me) draw();
-      });
-    } catch (err) {
-      if (err.status === 401) return signOutToLogin();
-      set("team-note", `Could not load your team. ${esc(err.message)}`);
-    }
-  }
-
-  readyP.then((s) => {
-    snap = s;
-    if (!snap) {
-      set("team-note", "Could not load data. Try again shortly.");
+    st.session = readSession();
+    if (!st.session) {
+      $("mtl-note").innerHTML = `Log in to see your team. <a href="/login">Log in</a>`;
       return;
     }
-    liveGw = (snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next) ?? snap.events[0])?.id ?? 1;
-    gw = liveGw;
-    byId = new Map(snap.players.map((p) => [p.id, p]));
-    teamById = new Map(snap.teams.map((t) => [t.id, t]));
-    posById = new Map(snap.positions.map((p) => [p.id, p.short]));
 
-    const pos = $("f-pos");
-    if (pos) snap.positions.forEach((p) => pos.append(new Option(p.short, String(p.id))));
+    await refresh();
 
+    document.addEventListener("fpl:live", () => {
+      if (st.me) safe("Live update", draw);
+    });
+  }
+
+  readyP.then((snap) => {
+    if (!snap) {
+      set("mtl-note", "Could not load data. Try again shortly.");
+      return;
+    }
+    st.snap = snap;
+    st.byId = new Map(snap.players.map((p) => [p.id, p]));
+    st.teamById = new Map(snap.teams.map((t) => [t.id, t]));
+    const current = snap.events.find((e) => e.current) ?? snap.events.find((e) => e.next);
+    st.gw = current?.id ?? 1;
     init();
   });
 })();
