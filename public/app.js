@@ -79,6 +79,7 @@
   // ---------- Nav ----------
   const LINKS = [
       { href: "/rate", label: "Rate my team", key: "rate" },
+      { href: "/stats", label: "Fpl player stats", key: "stats" },
 
     { href: "/team", label: "My team", key: "team", signedIn: true },
     { href: "/games", label: "Games", key: "games" },
