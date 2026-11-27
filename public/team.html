@@ -4,11 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>My team · FPL</title>
-  <meta name="description" content="Your Fantasy Premier League squad, fixtures, points, deadline and gameweek summary.">
+  <meta name="description" content="Your Fantasy Premier League team with live rank, live points, bonus, defensive contributions, transfers and the gameweek summary.">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
-    <script src="/menu.js" defer></script>
-  <script src="/team-view.js" defer></script>
   <script src="/my-team.js" defer></script>
 </head>
 <body data-page="team-view">
@@ -17,135 +15,55 @@
     <nav id="nav" aria-label="Main"></nav>
   </header>
 
-  <main class="mt">
-    <div class="mt-layout">
-      <div class="mt-main">
-        <p class="mt-who" id="team-meta"></p>
+  <main class="mtl" id="mtl">
+    <div class="mtl-top">
+      <label class="mtl-toggle">
+        <span>Show name</span>
+        <input id="mtl-names" type="checkbox" role="switch" checked>
+      </label>
+      <p class="mtl-meta" id="mtl-updated"></p>
+      <button type="button" class="mtl-iconbtn" id="mtl-refresh" aria-label="Refresh my team">⟳</button>
+    </div>
+    <p class="mtl-note" id="mtl-note" role="status"></p>
 
-        <div class="mt-banner">
-          <button id="gw-prev" class="mt-gwbtn" type="button" aria-label="Previous gameweek">PREV</button>
-          <span id="gw-title">Gameweek</span>
-          <button id="gw-next" class="mt-gwbtn" type="button" aria-label="Next gameweek">NEXT</button>
-        </div>
-
-        <div class="mt-deadline">
-          <div class="mt-dl-label" id="dl-label">Deadline</div>
-          <div class="mt-dl-units">
-            <div class="mt-dl-unit"><span id="dl-d">--</span><small>Days</small></div>
-            <div class="mt-dl-unit"><span id="dl-h">--</span><small>Hrs</small></div>
-            <div class="mt-dl-unit"><span id="dl-m">--</span><small>Min</small></div>
-            <div class="mt-dl-unit"><span id="dl-s">--</span><small>Sec</small></div>
+    <div class="mtl-grid">
+      <div class="mtl-col">
+        <section class="mtl-card" aria-labelledby="mtl-rank-h">
+          <h2 id="mtl-rank-h">Live FPL Rank</h2>
+          <div class="mtl-rank-body">
+            <p class="mtl-name" id="mtl-name">–</p>
+            <p class="mtl-team" id="mtl-team"></p>
+            <p class="mtl-bignum" id="mtl-rank">–</p>
+            <p class="mtl-sub">Overall rank</p>
+            <div class="mtl-tiles">
+              <div class="mtl-tile"><span id="mtl-gwlive">–</span><small>GW live</small></div>
+              <div class="mtl-tile"><span id="mtl-total">–</span><small>Total</small></div>
+            </div>
           </div>
-        </div>
-
-        <p class="meta" id="team-note"></p>
-
-        <div class="mt-vbar">
-          <div class="mt-seg" role="group" aria-label="View">
-            <button type="button" id="view-fx" class="is-on" aria-pressed="true">Fixtures</button>
-            <button type="button" id="view-pts" aria-pressed="false">Points</button>
-          </div>
-
-          <div class="lp-dd" id="pts-dd" hidden>
-            <button type="button" id="pts-dd-btn" class="lp-ddbtn" aria-haspopup="listbox" aria-expanded="false" aria-controls="pts-dd-menu"></button>
-            <div id="pts-dd-menu" class="lp-ddmenu" role="listbox" hidden></div>
-          </div>
-
-          <button type="button" id="pts-help-btn" class="lp-helpbtn" hidden aria-label="About this table" aria-expanded="false">?</button>
-        </div>
-
-        <p class="lp-help" id="pts-help-text" hidden>
-          Points are the player's points for the gameweek shown. MP is minutes played. The table is grouped by position, and each group is sorted by the option you choose.
-        </p>
-
-        <div id="mt-view"></div>
-
-        <div class="mt-tiles">
-          <div class="mt-tile"><div class="mt-tl">Transfers</div><div class="mt-tv" id="tile-tr">–</div></div>
-          <div class="mt-tile"><div class="mt-tl">Cost</div><div class="mt-tv" id="tile-cost">–</div></div>
-          <div class="mt-tile"><div class="mt-tl">Bank</div><div class="mt-tv is-green" id="tile-bank">–</div></div>
-          <div class="mt-tile"><div class="mt-tl">xPts</div><div class="mt-tv" id="tile-xpts">–</div></div>
-        </div>
-
-        <section id="summary-slot"></section>
-
-        <section class="rg-card">
-          <div class="rg-head"><span aria-hidden="true">📈</span> Rank Gains</div>
-          <p class="rg-desc">
-            Here you can see the green arrows you get from your players and how close they are to a price rise/fall.
-            <a href="/prices">Full price predictor →</a>
-          </p>
-          <div class="rg-colhead"><span>Progress towards price rise/fall</span></div>
-          <div id="rg-body"></div>
         </section>
 
-        <section class="pt-card">
-          <div class="pt-head"><span aria-hidden="true">🔥</span> Popular transfers (Top 10k)</div>
-          <div id="pop-body"></div>
-        </section>
-
-        <section class="th-card">
-          <div class="th-head"><span aria-hidden="true">⚠️</span> Main threats to your rank</div>
-          <div class="th-pills" id="th-pills"></div>
-          <p class="meta th-note" id="th-note"></p>
-          <div class="th-wrap">
-            <table class="th-table">
-              <thead id="th-head"></thead>
-              <tbody id="th-body"></tbody>
-            </table>
-          </div>
-          <p class="th-more"><button id="th-more" type="button" hidden>Show more</button></p>
+        <section class="mtl-card" aria-labelledby="mtl-start-h">
+          <h2 id="mtl-start-h">Starting 11 · Live points</h2>
+          <ul class="mtl-list" id="mtl-start"></ul>
         </section>
       </div>
 
-      <aside class="mt-side" aria-label="Player filters">
-        <div class="mt-sidetabs" role="tablist">
-          <button type="button" role="tab" class="is-on" data-side="players" aria-selected="true">Players</button>
-          <button type="button" role="tab" data-side="watch" aria-selected="false">Watchlist</button>
-          <button type="button" role="tab" data-side="summary" aria-selected="false">Summary</button>
-        </div>
-        <div class="mt-sidebody">
-          <div id="side-players">
-            <div class="mt-frow2">
-              <label class="mt-rng">
-                <span>Ownership <b id="own-val">100%</b></span>
-                <input id="own" type="range" min="0" max="100" step="1" value="100">
-              </label>
-              <label class="mt-rng">
-                <span>Price <b id="price-val">16m</b></span>
-                <input id="price" type="range" min="4" max="16" step="0.1" value="16">
-              </label>
-            </div>
+      <div class="mtl-col">
+        <section class="mtl-card" aria-labelledby="mtl-bench-h">
+          <h2 id="mtl-bench-h">Bench · Live points</h2>
+          <ul class="mtl-list" id="mtl-bench"></ul>
+        </section>
 
-            <label class="mt-f">
-              <span>Position</span>
-              <select id="f-pos" aria-label="Position"><option value="0">Select Position</option></select>
-            </label>
+        <section class="mtl-card" aria-labelledby="mtl-tr-h">
+          <h2 id="mtl-tr-h">Gameweek transfers</h2>
+          <div id="mtl-tr"></div>
+        </section>
 
-            <label class="mt-f">
-              <span>Club</span>
-              <select id="f-club" aria-label="Club"><option value="0">Select Club</option></select>
-            </label>
-
-            <label class="mt-f">
-              <span>Sort By</span>
-              <select id="f-sort" aria-label="Sort by">
-                <option value="default">Select Option</option>
-                <option value="points">Points</option>
-                <option value="price">Price</option>
-                <option value="form">Form</option>
-                <option value="own">Ownership</option>
-              </select>
-            </label>
-
-            <label class="mt-f">
-              <span>Name</span>
-              <input id="f-name" type="search" placeholder="Search by name">
-            </label>
-          </div>
-          <p class="mt-sempty" id="side-msg" hidden></p>
-        </div>
-      </aside>
+        <section class="mtl-card" aria-labelledby="mtl-sum-h">
+          <h2 id="mtl-sum-h">Gameweek summary (no bench)</h2>
+          <div id="mtl-sum"></div>
+        </section>
+      </div>
     </div>
   </main>
 
