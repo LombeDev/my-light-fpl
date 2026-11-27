@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>My team · FPL</title>
+  <meta name="description" content="Your Fantasy Premier League team with live rank, live points, bonus, defensive contributions, transfers and the gameweek summary.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+  <script src="/my-team.js" defer></script>
+</head>
+<body data-page="team-view">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav id="nav" aria-label="Main"></nav>
+  </header>
+
+  <main class="mtl" id="mtl">
+    <div class="mtl-top">
+      <label class="mtl-toggle">
+        <span>Show name</span>
+        <input id="mtl-names" type="checkbox" role="switch" checked>
+      </label>
+      <p class="mtl-meta" id="mtl-updated"></p>
+      <button type="button" class="mtl-iconbtn" id="mtl-refresh" aria-label="Refresh my team">⟳</button>
+    </div>
+    <p class="mtl-note" id="mtl-note" role="status"></p>
+
+    <div class="mtl-grid">
+      <div class="mtl-col">
+        <section class="mtl-card" aria-labelledby="mtl-rank-h">
+          <h2 id="mtl-rank-h">Live FPL Rank</h2>
+          <div class="mtl-rank-body">
+            <p class="mtl-name" id="mtl-name">–</p>
+            <p class="mtl-team" id="mtl-team"></p>
+            <p class="mtl-bignum" id="mtl-rank">–</p>
+            <p class="mtl-sub">Overall rank</p>
+            <div class="mtl-tiles">
+              <div class="mtl-tile"><span id="mtl-gwlive">–</span><small>GW live</small></div>
+              <div class="mtl-tile"><span id="mtl-total">–</span><small>Total</small></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="mtl-card" aria-labelledby="mtl-start-h">
+          <h2 id="mtl-start-h">Starting 11 · Live points</h2>
+          <ul class="mtl-list" id="mtl-start"></ul>
+        </section>
+      </div>
+
+      <div class="mtl-col">
+        <section class="mtl-card" aria-labelledby="mtl-bench-h">
+          <h2 id="mtl-bench-h">Bench · Live points</h2>
+          <ul class="mtl-list" id="mtl-bench"></ul>
+        </section>
+
+        <section class="mtl-card" aria-labelledby="mtl-tr-h">
+          <h2 id="mtl-tr-h">Gameweek transfers</h2>
+          <div id="mtl-tr"></div>
+        </section>
+
+        <section class="mtl-card" aria-labelledby="mtl-sum-h">
+          <h2 id="mtl-sum-h">Gameweek summary (no bench)</h2>
+          <div id="mtl-sum"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
+  </footer>
+</body>
+</html>

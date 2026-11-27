@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mini-leagues · FPL</title>
+  <meta name="description" content="Mini-league analysis, live rank and a gameweek table with captains, chips, transfers and CSV download.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+  <script src="/menu.js" defer></script>
+  <script src="/team-view.js" defer></script>
+  <script src="/leagues-table.js" defer></script>
+</head>
+<body data-page="league-table">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav id="nav" aria-label="Main"></nav>
+  </header>
+
+  <main>
+    <h1 id="title" class="lt-title">Mini-leagues</h1>
+
+    <div class="lt-bar">
+      <form id="find" class="lt-find">
+        <label class="sr-only" for="id">League ID</label>
+        <input id="id" inputmode="numeric" placeholder="League ID" autocomplete="off">
+        <button type="submit">View</button>
+      </form>
+      <div id="mine" class="lg-dd" hidden>
+        <button id="lg-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lg-menu">
+          <span id="lg-label">Leagues</span><span class="chev" aria-hidden="true">▾</span>
+        </button>
+        <div id="lg-menu" class="lg-menu" hidden>
+          <div class="lg-head">My leagues</div>
+          <ul id="mine-list"></ul>
+        </div>
+      </div>
+    </div>
+
+    <p class="meta" id="meta">Enter a classic league ID, or pick one of your leagues.</p>
+    <p class="meta" id="live-status"></p>
+
+    <section class="la" aria-labelledby="la-h">
+      <h2 id="la-h" class="la-h">League analysis <span id="gw-label" class="la-gw"></span></h2>
+      <div class="la-tiles" id="la-tiles"></div>
+      <p class="la-note" id="la-note"></p>
+    </section>
+
+    <section class="lx" aria-labelledby="lx-h">
+      <div class="lx-bar">
+        <h2 id="lx-h">Gameweek table</h2>
+        <div class="lx-tools">
+          <label class="sr-only" for="lx-filter">Filter managers by name</label>
+          <input id="lx-filter" type="search" placeholder="Filter by name">
+          <button type="button" id="lx-csv" class="lx-csv">Download CSV</button>
+        </div>
+      </div>
+      <div class="lx-wrap">
+        <table class="lx-table">
+          <thead id="lx-head"></thead>
+          <tbody id="lx-rows"></tbody>
+        </table>
+      </div>
+      <p class="lx-count" id="lx-count"></p>
+    </section>
+
+    <p class="gw">
+      <button id="prev" type="button" hidden>‹ Previous</button>
+      <button id="next" type="button" hidden>Next ›</button>
+    </p>
+  </main>
+
+ 
+</body>
+</html>

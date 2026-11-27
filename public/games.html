@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Games · FPL</title>
+  <meta name="description" content="Fantasy Premier League match results, bonus race and defensive contributions by gameweek.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+    <script src="/menu.js" defer></script>
+  <script src="/games.js" defer></script>
+</head>
+<body data-page="games">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav id="nav" aria-label="Main"></nav>
+  </header>
+
+  <main>
+    <div class="gw-head">
+      <div>
+        <h1 id="title">Games</h1>
+        <p class="meta">Games, bonus and defensive contributions</p>
+      </div>
+      <div class="gw-controls">
+        <button id="gains" type="button" aria-pressed="true">Hide gains</button>
+        <select id="view" aria-label="View">
+          <option value="near">Near U</option>
+          <option value="all">All matches</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="gw">
+      <button id="prev" type="button" aria-label="Previous gameweek">‹ Prev</button>
+      <strong id="gw">Loading…</strong>
+      <button id="next" type="button" aria-label="Next gameweek">Next ›</button>
+    </div>
+
+    <p class="meta" id="meta"></p>
+
+    <div id="cards" class="cards"></div>
+  </main>
+
+  <footer>
+    Data from the official Fantasy Premier League API. Not affiliated with the Premier League.
+  </footer>
+</body>
+</html>

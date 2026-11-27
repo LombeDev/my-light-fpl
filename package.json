@@ -1,0 +1,8 @@
+{
+  "name": "fpl-site",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo \"No build step: public/ is served as it is and functions/ is compiled by Cloudflare\""
+  }
+}

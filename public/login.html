@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Log in · FPL Team</title>
+  <meta name="description" content="Log in to FPL Team with your team ID.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/login.js" defer></script>
+    <script src="/menu.js" defer></script>
+</head>
+<body data-page="auth">
+  <main class="au">
+    <div class="au-logo" aria-hidden="true"><span>FPL<br>TEAM</span></div>
+    <h1 class="au-title">Welcome</h1>
+    <p class="au-sub">Log in with your FPL team ID.</p>
+
+    <form id="login-form" class="au-form" novalidate>
+      <label class="sr" for="team-id">FPL team ID</label>
+      <input id="team-id" class="au-input" inputmode="numeric" autocomplete="off" placeholder="FPL team ID*">
+
+      <p class="au-hint">Your team ID is in the web address of your Points page on the official FPL site.</p>
+
+      <p class="au-msg" id="msg" role="status"></p>
+      <button id="submit" class="au-primary" type="submit">Continue</button>
+    </form>
+  </main>
+</body>
+</html>
