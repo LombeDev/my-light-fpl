@@ -6209,3 +6209,348 @@ main > .mt-deadline {
     color: #d7f3dd;
   }
 }
+
+/* ==========================================================================
+   McMaster-Carr style: flat, square, dense and fast.
+   Light by default, dark when the phone is set to dark. This block comes last,
+   so it overrides the earlier styles. No shadows, gradients, animations or web
+   fonts, so pages paint quickly.
+   ========================================================================== */
+
+:root {
+  --font: Arial, Helvetica, "Liberation Sans", sans-serif;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --text: #1d1d1d;
+  --muted: #5a5a5a;
+  --border: #9c9c9c;
+  --row: #d6d6d6;
+  --link: #0064ad;
+  --focus: #0064ad;
+  --hover: #e6edf4;
+  --header: #33383f;
+  --head-bg: #eef0f2;
+  --btn: #f2f2f2;
+  --accent: #0064ad;
+  --accent-dark: #004f8c;
+  --green: #1a7f37;
+  --error: #b00020;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141414;
+    --surface: #1c1c1c;
+    --text: #ececec;
+    --muted: #b5b5b5;
+    --border: #5d5d5d;
+    --row: #333333;
+    --link: #8cc4ff;
+    --focus: #8cc4ff;
+    --hover: #2a3138;
+    --head-bg: #242424;
+    --btn: #2a2a2a;
+    --accent: #2f7fc7;
+    --accent-dark: #1f63a0;
+    --green: #4ade80;
+    --error: #ff8a80;
+  }
+}
+
+/* Remove decoration everywhere. */
+*,
+*::before,
+*::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: none !important;
+  animation: none !important;
+  border-radius: 0 !important;
+  background-image: none !important;
+}
+
+/* Keep round shapes where the shape carries meaning: dots, badges, rings, switches. */
+.rtp-disc,
+.rtp-circle,
+.rt-circle,
+.rt-ring,
+.rt-cap,
+.lp-cap,
+.mt-cap,
+.mt-cap-s,
+.mtl-cap,
+.pl-info,
+.lp-info,
+.fl-info,
+.fl-warn,
+.lp-helpbtn,
+.th-dot,
+.rg-dot {
+  border-radius: 50% !important;
+}
+.fx-switch,
+.mtl-toggle input {
+  border-radius: 0 !important;
+}
+.fx-switch::after,
+.mtl-toggle input::after {
+  border-radius: 0 !important;
+}
+
+html {
+  scroll-behavior: auto !important;
+}
+html,
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--text);
+  background: var(--bg);
+}
+main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 12px 24px;
+}
+main h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 14px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text) !important;
+}
+h2 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 14px 0 6px;
+}
+h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 12px 0 4px;
+}
+
+/* Header: a dark bar with square menu cells, like a catalogue's top bar. */
+header.site {
+  position: sticky;
+  top: 0;
+  z-index: 900;
+  display: flex;
+  align-items: stretch;
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--header);
+  border-bottom: 3px solid var(--accent);
+  color: #ffffff;
+}
+header.site .brand {
+  display: flex;
+  align-items: center;
+  padding-right: 16px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  text-decoration: none;
+}
+header.site nav#nav {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 0;
+}
+header.site nav#nav a,
+header.site nav#nav a:visited {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 12px;
+  color: #ffffff;
+  border-left: 1px solid #4a5058;
+  font-weight: 400;
+  text-decoration: none;
+}
+header.site nav#nav a:hover {
+  background: #434a53;
+}
+header.site nav#nav a[aria-current="page"] {
+  background: var(--accent);
+  font-weight: 700;
+}
+header.site .mn-burger {
+  color: #ffffff;
+}
+
+/* Links are plain blue, and underline on hover. */
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* Tables: a grid of thin rules, tight rows, and a grey header row. */
+table {
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-collapse: collapse;
+}
+th,
+td {
+  padding: 5px 8px !important;
+  border: 1px solid var(--row) !important;
+}
+th {
+  background: var(--head-bg);
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Buttons: flat grey, square, with a blue primary style. */
+button,
+input[type="button"],
+input[type="submit"] {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #8a8a8a;
+  background: var(--btn);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:active:not(:disabled) {
+  transform: none !important;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button[type="submit"],
+.rt-cta,
+.rtp-btn:not(.rtp-btn-ghost),
+.lx-csv,
+.mr-btn:not(.mr-btn-ghost),
+.mt-gwbtn,
+.ps-plus {
+  background: var(--accent) !important;
+  border-color: var(--accent-dark);
+  color: #ffffff !important;
+}
+button[aria-selected="true"],
+button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent-dark);
+  color: #ffffff;
+}
+
+/* Inputs and selects: square boxes with a dark border. */
+input:not([type="range"]):not([type="checkbox"]),
+select,
+textarea {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid #8a8a8a;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+  border-color: var(--focus);
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* Panels and cards: a thin border, no shadow, and the page background. */
+.rg-card,
+.pt-card,
+.th-card,
+.gs-card-wrap,
+.lp-wrap,
+.mt-list-wrap,
+.st-table-wrap,
+.table-wrap,
+.mr-box,
+.la-tile,
+.mtl-card,
+.ps-panel,
+.ps-wrap,
+.fx-wrap,
+.fx-panel,
+.rt-score,
+.rt-table-wrap,
+.lx-wrap,
+.mtl-tile,
+.rt-range,
+.lx-tools input,
+.tv-stat,
+.gs-tile {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Banners and status bars: light grey with dark text, like a catalogue's section bars. */
+.mt-banner,
+.lt-gw,
+.rt-stage,
+.mt-tiles,
+.mtl-sumgrid,
+.mtl-rank-body,
+.mtl-trgrid {
+  background: var(--head-bg);
+  color: var(--text);
+}
+.mt-banner {
+  border: 1px solid var(--border);
+}
+.mt-dl-unit,
+.mt-gwbtn {
+  background: var(--header) !important;
+  color: #ffffff !important;
+}
+
+/* Pitches: flat green with plain lines. */
+.rtp-pitch,
+.pv2-field,
+.tv-field,
+.mt-pitch {
+  background: #5a9a5a !important;
+}
+
+/* Skeletons and loading placeholders: a flat grey. */
+.ui-skeleton {
+  background: var(--row) !important;
+}
+
+/* Footer: a small, quiet line at the bottom. */
+footer {
+  margin-top: 24px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Compact the few spacious blocks on phones. */
+@media (max-width: 720px) {
+  main {
+    padding: 0 8px 20px;
+  }
+  main h1 {
+    font-size: 18px;
+  }
+  header.site .brand {
+    font-size: 16px;
+  }
+}
