@@ -4,171 +4,119 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>My team · FPL</title>
-  <meta name="description" content="Your Fantasy Premier League team with live rank, live points, bonus, defensive contributions, transfers and the gameweek summary.">
+  <meta name="description" content="Your Fantasy Premier League team with league standings, player impact, transfers, live feed and matches.">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/fplgw.css">
   <script src="/app.js" defer></script>
+  <script src="/menu.js" defer></script>
   <script src="/my-team.js" defer></script>
 </head>
-<body data-page="team-view" class="fplgw-body">
-  <header class="site fplgw-topbar">
-    <div class="fplgw-topbar-left">
-      <a class="brand" href="/">FPL</a>
-      <nav id="nav" aria-label="Main"></nav>
-    </div>
+<body data-page="team-view" class="fg-body">
+  <header class="site">
+    <a class="brand" href="/">FPL</a>
+    <nav id="nav" aria-label="Main"></nav>
+  </header>
 
-    <div class="fplgw-topbar-right">
-      <label class="mtl-toggle fplgw-mini-toggle">
-        <span>Names</span>
-        <input id="mtl-names" type="checkbox" role="switch" checked>
-      </label>
-      <span class="mtl-meta" id="mtl-updated"></span>
-      <button type="button" class="mtl-iconbtn" id="mtl-refresh" aria-label="Refresh my team">⟳</button>
-
-      <select id="fplgw-league-select" class="fplgw-blue-select" aria-label="Select league">
-        <option value="101712">Kopala EPL (101712)</option>
-        <option value="287414">League 287414</option>
-      </select>
-
-      <select id="fplgw-gw-select" class="fplgw-blue-select" aria-label="Select gameweek">
-        <option value="">Current GW</option>
-      </select>
-
-      <div class="fplgw-more-wrap">
-        <button type="button" id="fplgw-more-btn" class="fplgw-more-btn" aria-expanded="false">More ▾</button>
-        <div id="fplgw-more-menu" class="fplgw-dropdown" hidden>
-          <button type="button" data-action="summary">GW Summary &amp; Transfers</button>
-          <button type="button" data-action="standings">Refresh Standings</button>
-          <button type="button" data-action="top">Back to Top</button>
+  <div class="fg-bar">
+    <div class="fg-bar-left">
+      <button type="button" class="fg-tabbtn" id="fg-opp-btn">Opponent</button>
+      <div class="fg-dd">
+        <button type="button" class="fg-tabbtn" id="fg-more-btn" aria-expanded="false" aria-controls="fg-more-menu">More ▾</button>
+        <div class="fg-menu" id="fg-more-menu" hidden>
+          <a href="/stats">Statistics</a>
+          <a href="/games">In play</a>
+          <a href="/leagues">League race</a>
+          <a href="/prices">Prices</a>
         </div>
       </div>
     </div>
-  </header>
+    <div class="fg-bar-right">
+      <select id="fg-league" class="fg-blue" aria-label="League"></select>
+      <select id="fg-gw" class="fg-blue" aria-label="Gameweek"></select>
+      <button type="button" class="fg-tabbtn" id="fg-refresh">Refresh</button>
+    </div>
+  </div>
 
-  <main class="mtl fplgw-main" id="mtl">
-    <p class="mtl-note" id="mtl-note" role="status"></p>
+  <main class="fg-main">
+    <p class="fg-note" id="fg-note" role="status"></p>
 
-    <div class="fplgw-grid">
-      <!-- LEFT COLUMN: League Standings -->
-      <aside class="fplgw-panel fplgw-col-left" aria-labelledby="fplgw-league-h">
-        <div class="fplgw-panel-head">
-          <h2 id="fplgw-league-h">League Standings</h2>
-          <select id="fplgw-view-mode" class="fplgw-view-select" aria-label="Standings view mode">
-            <option value="standard">☰ Standard View</option>
-            <option value="compact">▤ Compact View</option>
-            <option value="season">▦ Season View</option>
+    <div class="fg-grid">
+      <section class="fg-panel" aria-labelledby="fg-st-h">
+        <div class="fg-head">
+          <h2 id="fg-st-h" class="fg-h">League Standings</h2>
+          <select id="fg-view" class="fg-blue" aria-label="Standings view">
+            <option value="standard">Standard View</option>
+            <option value="compact">Compact View</option>
           </select>
         </div>
-        <div id="fplgw-standings" class="fplgw-standings-wrap">
-          <p class="mtl-empty">Loading standings…</p>
-        </div>
-      </aside>
+        <div id="fg-standings" class="fg-scroll"></div>
+      </section>
 
-      <!-- CENTER COLUMN: Manager Overview + Table / Pitch View -->
-      <section class="fplgw-panel fplgw-col-center" aria-labelledby="fplgw-team-h">
-        <div class="fplgw-panel-head">
-          <div class="fplgw-team-heading">
-            <h2 id="fplgw-team-h"><span id="mtl-team">My Team</span></h2>
-            <span class="fplgw-mgr-sub" id="mtl-name">–</span>
+      <section class="fg-panel" aria-labelledby="fg-team-name">
+        <div class="fg-head">
+          <div>
+            <h2 class="fg-h"><span id="fg-team-name">My team</span></h2>
+            <div class="fg-sub" id="fg-mgr-name"></div>
           </div>
-
-          <label class="fplgw-switch-wrap" title="Switch between Table and Kopala Pitch View">
-            <input type="checkbox" id="fplgw-pitch-toggle">
-            <span class="fplgw-switch-slider"></span>
-            <span class="fplgw-switch-label">Pitch View</span>
+          <label class="fg-toggle">
+            <span>Pitch View</span>
+            <input type="checkbox" id="fg-pitch-toggle">
           </label>
         </div>
 
-        <!-- Manager Summary Header + GW Net & Safety Boxes -->
-        <div class="fplgw-mgr-summary">
-          <dl class="fplgw-meta-list">
-            <div><dt>Total Points</dt><dd id="mtl-total">–</dd></div>
-            <div><dt>GW Points</dt><dd id="mtl-gwlive">–</dd></div>
-            <div><dt>Live Rank</dt><dd id="mtl-rank">–</dd></div>
-            <div><dt>Chip</dt><dd id="fplgw-chip">–</dd></div>
-            <div><dt>Transfers</dt><dd id="fplgw-tr-summary">–</dd></div>
-          </dl>
-
-          <div class="fplgw-net-boxes">
-            <div class="fplgw-net-box">
-              <small>GW Net</small>
-              <strong id="fplgw-gw-net">–</strong>
-            </div>
-            <div class="fplgw-safety-box">
-              <small>Safety</small>
-              <strong id="fplgw-safety">–</strong>
-            </div>
+        <div class="fg-summary">
+          <div class="fg-info" id="fg-info"></div>
+          <div class="fg-boxes">
+            <div class="fg-box"><small>GW Net</small><strong id="fg-gw-net">–</strong></div>
+            <div class="fg-box"><small>Safety</small><strong id="fg-safety">–</strong></div>
           </div>
         </div>
 
-        <!-- VIEW A: Player Table (Default, matching fplgameweek.com) -->
-        <div id="fplgw-table-view" class="fplgw-table-view">
-          <table class="fplgw-player-table">
+        <div id="fg-table-wrap" class="fg-scroll">
+          <table class="fg-table">
             <thead>
-              <tr>
-                <th>Player</th>
-                <th>Status</th>
-                <th>Pts</th>
-                <th>Imp</th>
-              </tr>
+              <tr><th>Player</th><th>Status</th><th class="fg-num">Pts</th><th>Imp</th></tr>
             </thead>
-            <tbody id="fplgw-player-tbody"></tbody>
+            <tbody id="fg-table-body"></tbody>
           </table>
         </div>
 
-        <!-- VIEW B: Kopala FPL Pitch View (Your exact pitch.svg + compact cards) -->
-        <div id="fplgw-pitch-view" class="fplgw-pitch-view" hidden>
-          <div class="mtl-pitch-wrap">
-            <img src="/pitch.svg" alt="" class="mtl-pitch-bg" aria-hidden="true">
-            <div class="mtl-pitch-overlay">
-              <div class="mtl-p-row" id="mtl-gkp"></div>
-              <div class="mtl-p-row" id="mtl-def"></div>
-              <div class="mtl-p-row" id="mtl-mid"></div>
-              <div class="mtl-p-row" id="mtl-fwd"></div>
-            </div>
-          </div>
+        <div id="fg-pitch" class="fg-pitch-wrap" hidden></div>
 
-          <div class="mtl-bench-strip">
-            <div class="mtl-bench-label">Bench</div>
-            <div class="mtl-p-row mtl-p-row--bench" id="mtl-bench"></div>
-          </div>
+        <div class="fg-tabs" role="tablist" aria-label="Player lists">
+          <button type="button" class="fg-tab" role="tab" data-tab="imp" aria-selected="true">Other Important Players</button>
+          <button type="button" class="fg-tab" role="tab" data-tab="transfers" aria-selected="false">Transfer Suggestions</button>
         </div>
-
-        <!-- Transfers & GW Summary Drawer/Section below team -->
-        <div id="fplgw-extra-drawer" class="fplgw-extra-drawer">
-          <div class="fplgw-subcard">
-            <h3>Gameweek Transfers</h3>
-            <div id="mtl-tr"></div>
-          </div>
-          <div class="fplgw-subcard">
-            <h3>Gameweek Summary (Starting XI)</h3>
-            <div id="mtl-sum"></div>
-          </div>
+        <div class="fg-scroll">
+          <table class="fg-table">
+            <thead>
+              <tr><th>Player</th><th>Status</th><th class="fg-num">Pts</th><th>Imp</th></tr>
+            </thead>
+            <tbody id="fg-lower-body"></tbody>
+          </table>
         </div>
       </section>
 
-      <!-- RIGHT COLUMN: My Feed & Matches -->
-      <aside class="fplgw-col-right">
-        <section class="fplgw-panel fplgw-feed-panel" aria-labelledby="fplgw-feed-h">
-          <div class="fplgw-panel-head">
-            <h2 id="fplgw-feed-h">My Feed</h2>
-          </div>
-          <div id="fplgw-feed" class="fplgw-feed-list">
-            <p class="mtl-empty">No live events yet.</p>
-          </div>
-        </section>
+      <section class="fg-panel" id="fg-select-col" aria-labelledby="fg-sel-h">
+        <div class="fg-head"><h2 id="fg-sel-h" class="fg-h">Select team</h2></div>
+        <div id="fg-select" class="fg-scroll"></div>
+      </section>
 
-        <section class="fplgw-panel fplgw-matches-panel" aria-labelledby="fplgw-matches-h">
-          <div class="fplgw-panel-head">
-            <h2 id="fplgw-matches-h">Matches</h2>
-          </div>
-          <div id="fplgw-matches" class="fplgw-matches-list">
-            <p class="mtl-empty">Loading matches…</p>
-          </div>
+      <aside class="fg-right">
+        <section class="fg-panel" aria-labelledby="fg-feed-h">
+          <div class="fg-head"><h2 id="fg-feed-h" class="fg-h">My Feed</h2></div>
+          <div id="fg-feed" class="fg-scroll"></div>
+        </section>
+        <section class="fg-panel" aria-labelledby="fg-match-h">
+          <div class="fg-head"><h2 id="fg-match-h" class="fg-h">Matches</h2></div>
+          <div id="fg-matches" class="fg-scroll"></div>
         </section>
       </aside>
     </div>
   </main>
 
-
+  <footer>
+    Data from the official Fantasy Premier League API. Impact and safety figures are our own estimates. Not affiliated with the Premier League.
+  </footer>
 </body>
 </html>
