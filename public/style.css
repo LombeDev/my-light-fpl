@@ -6856,3 +6856,144 @@ footer {
   margin-bottom: 6px;
   opacity: 0.8;
 }
+
+
+
+
+.mtl-pitch-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 800 / 760;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.mtl-pitch-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+.mtl-pitch-overlay {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2.5% 2% 4%;
+  box-sizing: border-box;
+}
+
+.mtl-p-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(5px, 1.3vw, 13px);
+}
+
+/* Compact Player Card */
+.mtl-p-card {
+  width: clamp(50px, 10.5vw, 78px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Compact Jersey */
+.mtl-p-shirt {
+  position: relative;
+  width: 42%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: -2px;
+}
+
+.mtl-p-shirt img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.28));
+}
+
+.mtl-p-shirt .mtl-cap {
+  position: absolute;
+  left: -12px;
+  bottom: 2px;
+  width: 15px;
+  height: 15px;
+  font-size: 0.58rem;
+  border-radius: 50%;
+  background: #111827;
+  color: #fff;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #fff;
+}
+
+.mtl-p-pill {
+  width: 100%;
+  border-radius: 5px;
+  overflow: hidden;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+}
+
+.mtl-p-name {
+  background: #18222f;
+  color: #fff;
+  font-size: clamp(0.5rem, 1vw, 0.64rem);
+  font-weight: 600;
+  padding: 2px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mtl.is-names-off .mtl-p-name {
+  display: none;
+}
+
+.mtl-p-pts {
+  background: #178a5b;
+  color: #fff;
+  font-size: clamp(0.56rem, 1.1vw, 0.7rem);
+  font-weight: 700;
+  padding: 1.5px 0;
+}
+
+.mtl-p-pts.is-played {
+  background: #fff;
+  color: #111827;
+}
+
+.mtl-p-sub {
+  background: #eef2f6;
+  color: #1e293b;
+  font-size: clamp(0.46rem, 0.9vw, 0.56rem);
+  font-weight: 700;
+  padding: 1.5px 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mtl-bench-strip {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.mtl-bench-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  opacity: 0.8;
+}
