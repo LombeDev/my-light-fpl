@@ -27,7 +27,31 @@
     <p class="mtl-note" id="mtl-note" role="status"></p>
 
     <div class="mtl-grid">
-      <div class="mtl-col">
+      <div class="mtl-col mtl-col--pitch">
+        <section class="mtl-card mtl-pitch-card" aria-labelledby="mtl-pitch-h">
+          <h2 id="mtl-pitch-h" class="sr-only">Pitch view</h2>
+
+          <div class="mtl-pitch-wrap">
+            <!-- Separate pitch layer -->
+            <img src="/pitch.svg" alt="" class="mtl-pitch-bg" aria-hidden="true">
+
+            <!-- Dynamic starting XI rows -->
+            <div class="mtl-pitch-overlay">
+              <div class="mtl-p-row" id="mtl-gkp"></div>
+              <div class="mtl-p-row" id="mtl-def"></div>
+              <div class="mtl-p-row" id="mtl-mid"></div>
+              <div class="mtl-p-row" id="mtl-fwd"></div>
+            </div>
+          </div>
+
+          <div class="mtl-bench-strip">
+            <div class="mtl-bench-label">Bench</div>
+            <div class="mtl-p-row mtl-p-row--bench" id="mtl-bench"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="mtl-col mtl-col--side">
         <section class="mtl-card" aria-labelledby="mtl-rank-h">
           <h2 id="mtl-rank-h">Live FPL Rank</h2>
           <div class="mtl-rank-body">
@@ -40,18 +64,6 @@
               <div class="mtl-tile"><span id="mtl-total">–</span><small>Total</small></div>
             </div>
           </div>
-        </section>
-
-        <section class="mtl-card" aria-labelledby="mtl-start-h">
-          <h2 id="mtl-start-h">Starting 11 · Live points</h2>
-          <ul class="mtl-list" id="mtl-start"></ul>
-        </section>
-      </div>
-
-      <div class="mtl-col">
-        <section class="mtl-card" aria-labelledby="mtl-bench-h">
-          <h2 id="mtl-bench-h">Bench · Live points</h2>
-          <ul class="mtl-list" id="mtl-bench"></ul>
         </section>
 
         <section class="mtl-card" aria-labelledby="mtl-tr-h">
