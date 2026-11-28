@@ -1,8 +1,7 @@
-/* my-team.js: My team in the FPL Gameweek dashboard layout.
-   Standings, the Select team comparison, the player table with impact, transfers, the feed and matches
-   all come from data the site already loads. Points come from the live feed during matches, otherwise
-   from /api/gwstats. Impact is our own estimate: for your players it is 100 minus their ownership, and for
-   others it is minus their ownership. Page key: team-view. Each section runs on its own. */
+/* my-team.js: My team in a three-column dashboard on desktop (standings, your team, and select team with feed
+   and matches), stacked on phones. Standings show captain, chip, players in play and yet to start (from each
+   manager's picks), and GW net. Points come from the live feed during matches, otherwise from /api/gwstats.
+   Impact and in-play counts are our own estimates. Page key: team-view. Each section runs on its own. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
@@ -18,6 +17,7 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
   const FALLBACK_LEAGUES = [{ id: 101712, name: "Kopala EPL" }];
+  const PICK_BATCH = 5;
 
   const st = {
     snap: null,
@@ -25,9 +25,9 @@
     gw: 1,
     leagues: [],
     leagueId: null,
-    leagueName: "",
     standingsView: "standard",
     pitch: false,
+    selPitch: false,
     tab: "imp",
     me: null,
     picks: null,
@@ -35,6 +35,7 @@
     stats: null,
     rows: [],
     managersById: new Map(),
+    picksByEntry: new Map(),
     selected: null,
     selPicks: null,
     selMgr: null,
@@ -90,6 +91,7 @@
     return Number.isFinite(v) ? v : 0;
   };
   const short = (teamId) => st.teamById.get(teamId)?.short ?? "";
+  const isMine = (entry) => String(entry) === String(st.session?.entryId ?? "");
 
   function kickoffLabel(iso) {
     if (!iso) return "TBC";
@@ -111,7 +113,7 @@
     );
   }
 
-  // "finished", "started", "sleep" (not yet kicked off), or "none" (no fixture this gameweek).
+  // "finished", "started" (a match is on), "sleep" (not kicked off), or "none" (no fixture this gameweek).
   function clubState(teamId) {
     const list = fixturesForGw().filter((f) => f.home === teamId || f.away === teamId);
     if (!list.length) return "none";
@@ -143,7 +145,7 @@
     return inTeam ? 100 - ownOf(p) : -ownOf(p);
   }
 
-  // The impact bar's width is set in JavaScript after render, because inline style attributes are blocked by the CSP.
+  // The bar's width is set in JavaScript after render, because inline style attributes are blocked by the CSP.
   function impCell(v) {
     const w = Math.min(100, Math.abs(v));
     const cls = v >= 0 ? "is-pos" : "is-neg";
@@ -182,6 +184,22 @@
     return squad.xi.reduce((sum, pk) => sum + figures(pk.element, live).pts * (pk.multiplier ?? 1), 0);
   }
 
+  // Players in the starting XI whose match is on, and those whose match has not started.
+  function playingCounts(entry) {
+    const picks = st.picksByEntry.get(Number(entry));
+    if (!picks) return null;
+    let inPlay = 0;
+    let toStart = 0;
+    for (const pk of squadOf(picks).xi) {
+      const p = st.byId.get(pk.element);
+      if (!p) continue;
+      const cs = clubState(p.team);
+      if (cs === "started") inPlay += 1;
+      else if (cs === "sleep") toStart += 1;
+    }
+    return { inPlay, toStart };
+  }
+
   // One table row. Options: pk (for captain badge and multiplier), imp (number), impText (custom), dim.
   function rowHtml(p, live, opts = {}) {
     if (!p) return "";
@@ -195,6 +213,36 @@
       <td class="fg-num"><b>${f.pts * mult}</b></td>
       <td>${impHtml}</td>
     </tr>`;
+  }
+
+  // Pitch markup for any squad: goalkeeper to forward, then the bench.
+  function pitchMarkup(squad, live) {
+    const groups = { 1: [], 2: [], 3: [], 4: [] };
+    for (const pk of squad.xi) {
+      const p = st.byId.get(pk.element);
+      if (p) groups[p.element_type].push({ pk, p });
+    }
+
+    const card = ({ pk, p }) => {
+      const pts = figures(p.id, live).pts * (pk?.multiplier ?? 1);
+      return `<div class="fg-pcard">
+        ${shirtFor(p)}
+        <div class="fg-pname">${esc(p.web_name)} ${badgeFor(pk)}</div>
+        <div class="fg-ppts">${pts}</div>
+      </div>`;
+    };
+
+    const field = [1, 2, 3, 4].map((t) => `<div class="fg-prow">${groups[t].map(card).join("")}</div>`).join("");
+    const bench = squad.bench
+      .map((pk) => {
+        const p = st.byId.get(pk.element);
+        return p ? card({ pk: null, p }) : "";
+      })
+      .join("");
+
+    return `<div class="fg-field">${field}</div>
+       <div class="fg-bench-label">Bench</div>
+       <div class="fg-prow fg-prow-bench">${bench}</div>`;
   }
 
   // ---------- Header: team, summary and boxes ----------
@@ -229,7 +277,7 @@
     );
   }
 
-  // ---------- Player table: starting XI, then bench ----------
+  // ---------- Your player table: starting XI, then bench ----------
   function renderTable(squad, live) {
     if (!st.picks) {
       html("fg-table-body", `<tr><td colspan="4" class="fg-empty">Picks for this gameweek are not available yet.</td></tr>`);
@@ -251,47 +299,19 @@
     applyWidths($("fg-table-body"));
   }
 
-  // ---------- Pitch view ----------
   function renderPitch(squad, live) {
-    const groups = { 1: [], 2: [], 3: [], 4: [] };
-    for (const pk of squad.xi) {
-      const p = st.byId.get(pk.element);
-      if (p) groups[p.element_type].push({ pk, p });
-    }
-
-    const card = ({ pk, p }) => {
-      const pts = figures(p.id, live).pts * (pk?.multiplier ?? 1);
-      return `<div class="fg-pcard">
-        ${shirtFor(p)}
-        <div class="fg-pname">${esc(p.web_name)} ${badgeFor(pk)}</div>
-        <div class="fg-ppts">${pts}</div>
-      </div>`;
-    };
-
-    const field = [1, 2, 3, 4].map((t) => `<div class="fg-prow">${groups[t].map(card).join("")}</div>`).join("");
-    const bench = squad.bench
-      .map((pk) => {
-        const p = st.byId.get(pk.element);
-        return p ? card({ pk: null, p }) : "";
-      })
-      .join("");
-
-    html(
-      "fg-pitch",
-      `<div class="fg-field">${field}</div>
-       <div class="fg-bench-label">Bench</div>
-       <div class="fg-prow fg-prow-bench">${bench}</div>`,
-    );
+    html("fg-pitch", pitchMarkup(squad, live));
   }
 
   function applyPitchToggle() {
     const tableWrap = $("fg-table-wrap");
-    const lower = document.querySelector(".fg-tabs")?.nextElementSibling;
     const pitch = $("fg-pitch");
+    const tabs = document.querySelector(".fg-tabs");
+    const lower = tabs?.nextElementSibling;
     if (tableWrap) tableWrap.hidden = st.pitch;
     if (pitch) pitch.hidden = !st.pitch;
+    if (tabs) tabs.hidden = st.pitch;
     if (lower) lower.hidden = st.pitch;
-    document.querySelector(".fg-tabs")?.toggleAttribute("hidden", st.pitch);
   }
 
   // ---------- Other important players / transfer suggestions ----------
@@ -334,25 +354,31 @@
       return;
     }
     const compact = st.standingsView === "compact";
-    const mineId = String(st.session?.entryId ?? "");
+    const selected = st.selected === null ? null : Number(st.selected);
 
     const body = st.rows
       .map((r, i) => {
         const m = st.managersById.get(r.entry);
-        const mine = String(r.entry) === mineId;
+        const counts = playingCounts(r.entry);
         const cap = m ? nameOf(m.captainId) : "–";
         const chip = m?.chip ?? "";
         const gwNet = m ? (Number(m.gross) || 0) - (Number(m.hit) || 0) : Number(r.gw) || 0;
         const pos = r.rank ?? i + 1;
-        return `<tr class="${mine ? "is-mine" : ""}" data-entry="${r.entry}">
+        const classes = [isMine(r.entry) ? "is-mine" : "", selected === Number(r.entry) ? "is-selected" : ""]
+          .filter(Boolean)
+          .join(" ");
+        return `<tr class="${classes}" data-entry="${r.entry}" tabindex="0">
           <td class="fg-num">${pos}</td>
           <td>
             <div class="fg-team">${esc(r.team)}</div>
             ${compact ? "" : `<div class="fg-sub">${esc(r.manager)}</div>`}
           </td>
-          <td>${esc(cap)}</td>
-          <td>${chip ? `<span class="fg-chip">${esc(String(chip).toUpperCase())}</span>` : ""}</td>
+          ${compact ? "" : `<td>${esc(cap)}</td>`}
+          ${compact ? "" : `<td>${chip ? `<span class="fg-chip">${esc(String(chip).toUpperCase())}</span>` : ""}</td>`}
+          ${compact ? "" : `<td class="fg-num">${counts ? counts.inPlay : "–"}</td>`}
+          ${compact ? "" : `<td class="fg-num">${counts ? counts.toStart : "–"}</td>`}
           <td class="fg-num">${gwNet}</td>
+          <td class="fg-num">–</td>
           <td class="fg-num"><b>${Number(r.total) || 0}</b></td>
         </tr>`;
       })
@@ -360,29 +386,60 @@
 
     html(
       "fg-standings",
-      `<table class="fg-table">
-        <thead><tr><th class="fg-num">#</th><th>Team</th><th>Captain</th><th>Chip</th><th class="fg-num">GW</th><th class="fg-num">Total</th></tr></thead>
+      `<table class="fg-table fg-standings-table">
+        <thead><tr>
+          <th class="fg-num">#</th><th>Team</th>
+          ${compact ? "" : "<th>Captain</th><th>Chip</th><th class=\"fg-num\">In play</th><th class=\"fg-num\">To start</th>"}
+          <th class="fg-num">GW</th><th class="fg-num">Month</th><th class="fg-num">Total</th>
+        </tr></thead>
         <tbody>${body}</tbody>
       </table>`,
     );
   }
 
+  // Fetches each listed manager's picks, a few at a time, so the In play and To start columns fill in.
+  async function loadStandingPicks() {
+    const gw = st.gw;
+    const need = st.rows.map((r) => r.entry).filter((id) => !st.picksByEntry.has(Number(id)));
+    for (let i = 0; i < need.length; i += PICK_BATCH) {
+      if (gw !== st.gw) return;
+      const batch = need.slice(i, i + PICK_BATCH);
+      await Promise.all(
+        batch.map(async (id) => {
+          const picks = await api(`/picks/${id}/${gw}`).catch(() => null);
+          st.picksByEntry.set(Number(id), picks);
+        }),
+      );
+      if (gw === st.gw) safe("Standings", renderStandings);
+    }
+  }
+
   // ---------- Select team (the opponent or any team you click) ----------
   function renderSelect(live) {
+    const toggle = $("fg-select-toggle");
+    if (toggle) toggle.checked = st.selPitch;
+    const table = $("fg-select");
+    const pitch = $("fg-select-pitch");
+
     if (!st.selected) {
       html("fg-select", `<p class="fg-empty">Click a team in the league to compare it with yours.</p>`);
+      if (pitch) pitch.hidden = true;
+      if (table) table.hidden = false;
       return;
     }
     if (!st.selPicks) {
       html("fg-select", `<p class="fg-empty">Loading team…</p>`);
+      if (pitch) pitch.hidden = true;
+      if (table) table.hidden = false;
       return;
     }
+
     const squad = squadOf(st.selPicks);
     const m = st.selMgr;
     const pts = gwPointsOf(squad, live);
     const name = m?.name ?? "Team";
     const mgr = m?.playerName ?? "";
-    const rows = squad.xi.map((pk) => rowHtml(st.byId.get(pk.element), live, { pk, impText: "<span class=\"fg-net\">–</span>" })).join("");
+    const rows = squad.xi.map((pk) => rowHtml(st.byId.get(pk.element), live, { pk, impText: `<span class="fg-net">–</span>` })).join("");
 
     html(
       "fg-select",
@@ -391,13 +448,14 @@
         <div class="fg-kv"><span>Manager</span><b>${esc(mgr)}</b></div>
         <div class="fg-kv"><span>GW points</span><b>${pts}</b></div>
       </div>
-      <div class="fg-scroll">
-        <table class="fg-table">
-          <thead><tr><th>Player</th><th>Status</th><th class="fg-num">Pts</th><th>Imp</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`,
+      <table class="fg-table">
+        <thead><tr><th>Player</th><th>Status</th><th class="fg-num">Pts</th><th>Imp</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`,
     );
+    html("fg-select-pitch", `<div class="fg-kvs"><div class="fg-kv"><span>Team</span><b>${esc(name)}</b></div></div>${pitchMarkup(squad, live)}`);
+    if (table) table.hidden = st.selPitch;
+    if (pitch) pitch.hidden = !st.selPitch;
   }
 
   // ---------- My feed: this gameweek's events for your starting XI ----------
@@ -447,7 +505,11 @@
     }
     const row = (f) => {
       const score = f.started ? `${f.home_score ?? 0} - ${f.away_score ?? 0}` : "? - ?";
-      const tag = f.finished ? `<span class="fg-tag is-done">Done (P)</span>` : f.started ? `<span class="fg-tag is-live">Live</span>` : `<span class="fg-tag">${esc(kickoffLabel(f.kickoff))}</span>`;
+      const tag = f.finished
+        ? `<span class="fg-tag is-done">Done (P)</span>`
+        : f.started
+          ? `<span class="fg-tag is-live">Live</span>`
+          : `<span class="fg-tag">${esc(kickoffLabel(f.kickoff))}</span>`;
       return `<div class="fg-match">
         <span class="fg-mhome">${esc(short(f.home))}</span>
         <span class="fg-score">${esc(score)}</span>
@@ -464,11 +526,13 @@
     );
   }
 
-  // ---------- League selector and gameweek selector ----------
+  // ---------- League and gameweek selectors ----------
   function renderSelectors() {
     html(
       "fg-league",
-      st.leagues.map((l) => `<option value="${l.id}"${String(l.id) === String(st.leagueId) ? " selected" : ""}>${esc(l.name)}</option>`).join(""),
+      st.leagues
+        .map((l) => `<option value="${l.id}"${String(l.id) === String(st.leagueId) ? " selected" : ""}>${esc(l.name)}</option>`)
+        .join(""),
     );
     html(
       "fg-gw",
@@ -482,8 +546,7 @@
   function draw() {
     const live = liveMap();
     const squad = squadOf(st.picks);
-    if (!st.picks) set("fg-note", "Your picks for this gameweek are not available yet.");
-    else set("fg-note", "");
+    set("fg-note", st.picks ? "" : "Your picks for this gameweek are not available yet.");
 
     safe("Header", () => renderHeader(squad, live));
     safe("Table", () => renderTable(squad, live));
@@ -523,7 +586,6 @@
     if (!st.leagueId) return;
     try {
       const data = await api(`/league/${st.leagueId}?page=1`);
-      st.leagueName = data.league ?? "";
       st.rows = data.results ?? [];
       const need = st.rows.map((r) => r.entry).filter((id) => !st.managersById.has(id));
       for (let i = 0; i < need.length; i += 10) {
@@ -539,17 +601,19 @@
 
   async function loadSelected() {
     if (!st.selected) return;
-    const id = st.selected;
-    st.selPicks = null;
+    const id = Number(st.selected);
+    st.selPicks = st.picksByEntry.get(id) ?? null;
     st.selMgr = null;
     draw();
     const [picks, mgr] = await Promise.all([
-      api(`/picks/${id}/${st.gw}`).catch(() => null),
+      st.selPicks ? Promise.resolve(st.selPicks) : api(`/picks/${id}/${st.gw}`).catch(() => null),
       st.managersById.get(id) ?? api(`/managers?ids=${id}`).then((d) => d.managers?.[0] ?? null).catch(() => null),
     ]);
-    if (st.selected !== id) return;
+    if (Number(st.selected) !== id) return;
+    const row = st.rows.find((r) => Number(r.entry) === id);
     st.selPicks = picks;
-    st.selMgr = mgr ? { ...mgr, name: st.rows.find((r) => r.entry === id)?.team ?? "", playerName: st.rows.find((r) => r.entry === id)?.manager ?? "" } : null;
+    st.picksByEntry.set(id, picks);
+    st.selMgr = mgr ? { ...mgr, name: row?.team ?? "", playerName: row?.manager ?? "" } : null;
     draw();
   }
 
@@ -563,11 +627,13 @@
     ]);
     st.me = meRes.entry;
     st.picks = picksRes;
+    st.picksByEntry.set(Number(st.session.entryId), picksRes);
     st.mgr = mgrRes?.managers?.[0] ?? null;
     st.stats = stats;
     await loadStandings();
     draw();
     if (st.selected) await loadSelected();
+    loadStandingPicks();
   }
 
   async function refresh() {
@@ -580,11 +646,22 @@
     }
   }
 
+  function selectEntry(entry) {
+    st.selected = Number(entry);
+    st.selPicks = null;
+    loadSelected();
+  }
+
   // ---------- Wiring ----------
   function wire() {
     $("fg-pitch-toggle")?.addEventListener("change", (e) => {
       st.pitch = e.target.checked;
       applyPitchToggle();
+    });
+
+    $("fg-select-toggle")?.addEventListener("change", (e) => {
+      st.selPitch = e.target.checked;
+      safe("Select team", () => renderSelect(liveMap()));
     });
 
     $("fg-view")?.addEventListener("change", (e) => {
@@ -595,10 +672,13 @@
     $("fg-league")?.addEventListener("change", async (e) => {
       st.leagueId = e.target.value;
       st.managersById = new Map();
+      st.rows = [];
       st.selected = null;
+      st.selPicks = null;
       await loadStandings();
       safe("Standings", renderStandings);
       safe("Selectors", renderSelectors);
+      loadStandingPicks();
     });
 
     $("fg-gw")?.addEventListener("change", async (e) => {
@@ -606,12 +686,19 @@
       if (!v) return;
       st.gw = v;
       st.managersById = new Map();
+      st.picksByEntry = new Map();
+      st.selected = null;
+      st.selPicks = null;
       await refresh();
     });
 
     $("fg-refresh")?.addEventListener("click", refresh);
 
     $("fg-opp-btn")?.addEventListener("click", () => {
+      if (!st.selected) {
+        const first = st.rows.find((r) => !isMine(r.entry));
+        if (first) selectEntry(first.entry);
+      }
       $("fg-select-col")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
@@ -637,13 +724,15 @@
       }),
     );
 
-    // Clicking a row in the league table opens that team in the Select team panel.
+    // Clicking a row (or pressing Enter on it) opens that team in the Select team panel.
     $("fg-standings")?.addEventListener("click", (e) => {
       const row = e.target.closest("tr[data-entry]");
-      if (!row) return;
-      const id = Number(row.dataset.entry);
-      st.selected = id;
-      loadSelected();
+      if (row) selectEntry(row.dataset.entry);
+    });
+    $("fg-standings")?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const row = e.target.closest("tr[data-entry]");
+      if (row) selectEntry(row.dataset.entry);
     });
 
     document.addEventListener("fpl:live", () => {
@@ -657,7 +746,6 @@
 
     st.session = readSession();
     if (!st.session) {
-      set("fg-note", "");
       html("fg-note", `Log in to see your team. <a href="/login">Log in</a>`);
       return;
     }
