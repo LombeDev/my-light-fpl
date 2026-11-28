@@ -18,11 +18,11 @@
   const st = {
     snap: null,
     session: null,
-    gw: 1,           // the current gameweek
+    gw: 1,
     me: null,
     picks: null,
-    mgr: null,       // this gameweek's transfers and hits, from /api/managers
-    stats: null,     // Map of player id to gameweek stats from /api/gwstats, or null if unavailable
+    mgr: null,
+    stats: null,
     byId: new Map(),
     teamById: new Map(),
   };
@@ -31,7 +31,6 @@
     document.addEventListener("fpl:ready", (e) => resolve(e.detail), { once: true }),
   );
 
-  // Runs one section. If it fails, the error is logged and the note says which section broke.
   function safe(name, fn) {
     try {
       fn();
@@ -73,8 +72,6 @@
   const nameOf = (id) => st.byId.get(id)?.web_name ?? "Unknown";
   const timeNow = () => new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-  // Each club's state in the current gameweek: finished, started (some matches begun), or sleep.
-  // A club with no fixture this gameweek is missing from the map.
   function clubStates() {
     const seen = new Map();
     for (const f of st.snap.fixtures) {
@@ -94,8 +91,6 @@
     return out;
   }
 
-  // One player's figures for this gameweek. The live feed is used when it has the player, because it is
-  // the most current during matches. Otherwise the gameweek stats are used, which keep the final points.
   function figures(id, live) {
     const d = live.get(id);
     const s = st.stats?.get(id);
@@ -108,7 +103,6 @@
     return { pts: 0, minutes: 0, bn: 0, dc: null };
   }
 
-  // Everything a row needs: points, multiplier, total, bonus, DC and status.
   function rowData(pk, live, states) {
     const p = st.byId.get(pk.element);
     const f = figures(pk.element, live);
@@ -145,39 +139,53 @@
     set("mtl-total", String(me.summary_overall_points ?? 0));
   }
 
-  // ---------- Player rows ----------
-  function rowHtml(r) {
+  // ---------- Pitch & bench cards ----------
+  function cardHtml(r) {
     const t = st.teamById.get(r.p.team);
     const gk = r.p.element_type === 1;
     const img = t?.code
-      ? `<img class="mtl-shirt" src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
+      ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
       : "";
     const badge = r.pk.is_captain
       ? `<span class="mtl-cap">C</span>`
       : r.pk.is_vice_captain
         ? `<span class="mtl-cap is-v">V</span>`
         : "";
-    const statusCls = r.status === "Played" ? "is-ok" : r.status === "Playing" ? "is-live" : "is-muted";
-    const dcText = r.dc === null ? "–" : String(r.dc);
-    const dcPos = typeof r.dc === "number" && r.dc > 0 ? " is-pos" : "";
+    const playedCls = r.status === "Played" || r.status === "Playing" ? " is-played" : "";
+    const dcPart = typeof r.dc === "number" && r.dc > 0 ? ` · DC ${r.dc}` : "";
+    const bnPart = r.bn > 0 ? ` · +${r.bn}B` : "";
 
-    return `<li class="mtl-row">
-      <div class="mtl-pic">${img}</div>
-      <div class="mtl-who">
-        <span class="mtl-pname">${esc(r.p.web_name)}${badge}</span>
-        <span class="mtl-psub">${POS[r.p.element_type] ?? ""} · ${esc(t?.short ?? "")}</span>
-        <span class="mtl-status ${statusCls}">${esc(r.status)}</span>
+    return `<div class="mtl-p-card">
+      <div class="mtl-p-shirt">
+        ${badge}
+        ${img}
       </div>
-      <div class="mtl-stat${r.bn > 0 ? " is-pos" : ""}"><span class="mtl-k">Bonus</span><b class="mtl-v">${r.bn}</b></div>
-      <div class="mtl-stat"><span class="mtl-k">SV pts</span><b class="mtl-v">–</b></div>
-      <div class="mtl-stat${dcPos}"><span class="mtl-k">DC pts</span><b class="mtl-v">${dcText}</b></div>
-      <div class="mtl-total"><b>${r.total}</b><span>Total</span></div>
-    </li>`;
+      <div class="mtl-p-pill">
+        <div class="mtl-p-name">${esc(r.p.web_name)}</div>
+        <div class="mtl-p-pts${playedCls}">${r.total}</div>
+        <div class="mtl-p-sub">${esc(t?.short ?? "")}${bnPart}${dcPart}</div>
+      </div>
+    </div>`;
   }
 
-  function renderRows(id, list, live, states) {
-    const rows = list.map((pk) => rowData(pk, live, states));
-    $(id).innerHTML = rows.length ? rows.map(rowHtml).join("") : `<li class="mtl-empty">No players to show.</li>`;
+  function renderPitch(xi, bench, live, states) {
+    const groups = { GKP: [], DEF: [], MID: [], FWD: [] };
+
+    for (const pk of xi) {
+      const r = rowData(pk, live, states);
+      const posKey = POS[r.p?.element_type];
+      if (posKey && groups[posKey]) groups[posKey].push(r);
+    }
+
+    for (const [posKey, list] of Object.entries(groups)) {
+      const el = $(`mtl-${posKey.toLowerCase()}`);
+      if (el) el.innerHTML = list.map(cardHtml).join("");
+    }
+
+    const benchRows = bench.map((pk) => rowData(pk, live, states));
+    $("mtl-bench").innerHTML = benchRows.length
+      ? benchRows.map(cardHtml).join("")
+      : `<p class="mtl-empty">No bench players to show.</p>`;
   }
 
   // ---------- Transfers ----------
@@ -253,8 +261,7 @@
       : [];
 
     safe("Live rank", () => renderRank(xi, live, states));
-    safe("Starting 11", () => renderRows("mtl-start", xi, live, states));
-    safe("Bench", () => renderRows("mtl-bench", bench, live, states));
+    safe("Pitch", () => renderPitch(xi, bench, live, states));
     safe("Transfers", renderTransfers);
     safe("Summary", () => renderSummary(xi, live));
   }
