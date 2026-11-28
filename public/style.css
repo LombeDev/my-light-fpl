@@ -6895,63 +6895,92 @@ footer {
   gap: clamp(5px, 1.3vw, 13px);
 }
 
-/* Compact Player Card */
+/* Card & Jersey Sizing */
 .mtl-p-card {
-  width: clamp(50px, 10.5vw, 78px);
+  width: clamp(54px, 11.2vw, 84px);
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-/* Compact Jersey */
 .mtl-p-shirt {
   position: relative;
-  width: 42%;
-  aspect-ratio: 1 / 1;
+  width: 48%;
+  aspect-ratio: 1 / 1.05;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: -2px;
+  margin-bottom: -3px;
+  z-index: 2;
 }
 
 .mtl-p-shirt img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.28));
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
 }
 
+/* Left C / V Circle Badge */
 .mtl-p-shirt .mtl-cap {
   position: absolute;
-  left: -12px;
-  bottom: 2px;
-  width: 15px;
-  height: 15px;
-  font-size: 0.58rem;
+  left: -14px;
+  bottom: 4px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #111827;
-  color: #fff;
+  background: #141c26;
+  color: #ffffff;
+  font-size: 0.58rem;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #fff;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
+/* Right Status Icon (Star / Dice) */
+.mtl-j-icon {
+  position: absolute;
+  right: -13px;
+  bottom: 4px;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.mtl-j-icon.is-star {
+  color: #facc15;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.mtl-j-icon.is-dice {
+  background: #ffffff;
+  color: #111827;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-size: 0.68rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* 3-Tier Data Pill */
 .mtl-p-pill {
   width: 100%;
-  border-radius: 5px;
+  border-radius: 6px;
   overflow: hidden;
   text-align: center;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.26);
+  position: relative;
+  z-index: 1;
 }
 
+/* Tier 1: Dark Navy Name */
 .mtl-p-name {
-  background: #18222f;
-  color: #fff;
-  font-size: clamp(0.5rem, 1vw, 0.64rem);
+  background: #16202c;
+  color: #ffffff;
+  font-size: clamp(0.52rem, 1.05vw, 0.66rem);
   font-weight: 600;
-  padding: 2px 3px;
+  padding: 2.5px 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6961,39 +6990,47 @@ footer {
   display: none;
 }
 
+/* Tier 2: Current GW Points (Teal-Green before play, White once playing/played) */
 .mtl-p-pts {
   background: #178a5b;
-  color: #fff;
-  font-size: clamp(0.56rem, 1.1vw, 0.7rem);
-  font-weight: 700;
-  padding: 1.5px 0;
+  color: #ffffff;
+  font-size: clamp(0.6rem, 1.2vw, 0.75rem);
+  font-weight: 800;
+  padding: 2px 0;
+  line-height: 1.15;
 }
 
 .mtl-p-pts.is-played {
-  background: #fff;
-  color: #111827;
+  background: #ffffff;
+  color: #0f172a;
 }
 
-.mtl-p-sub {
-  background: #eef2f6;
-  color: #1e293b;
-  font-size: clamp(0.46rem, 0.9vw, 0.56rem);
+/* Tier 3: Split Bottom Row (Ownership % Left | Active Fixture Right) */
+.mtl-p-split {
+  display: flex;
+  width: 100%;
+  font-size: clamp(0.45rem, 0.9vw, 0.56rem);
   font-weight: 700;
-  padding: 1.5px 2px;
+  line-height: 1.25;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.mtl-p-own {
+  flex: 1;
+  background: #ffffff;
+  color: #111827;
+  padding: 2px 1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.mtl-bench-strip {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(148, 163, 184, 0.35);
-}
-
-.mtl-bench-label {
-  font-size: 0.75rem;
-  font-weight: 700;
-  margin-bottom: 6px;
-  opacity: 0.8;
+.mtl-p-fix {
+  flex: 1.15;
+  background: #6ee787;
+  color: #052e16;
+  padding: 2px 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
