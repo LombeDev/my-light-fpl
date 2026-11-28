@@ -91,6 +91,22 @@
     return out;
   }
 
+  function fixtureLabel(teamId) {
+    if (!teamId || !st.snap?.fixtures) return "–";
+    const list = st.snap.fixtures.filter(
+      (f) => f.gw === st.gw && (f.home === teamId || f.away === teamId),
+    );
+    if (!list.length) return "BLANK";
+    return list
+      .map((f) => {
+        const isHome = f.home === teamId;
+        const oppId = isHome ? f.away : f.home;
+        const oppShort = st.teamById.get(oppId)?.short ?? "???";
+        return `${oppShort} (${isHome ? "H" : "A"})`;
+      })
+      .join(", ");
+  }
+
   function figures(id, live) {
     const d = live.get(id);
     const s = st.stats?.get(id);
@@ -144,26 +160,38 @@
     const t = st.teamById.get(r.p.team);
     const gk = r.p.element_type === 1;
     const img = t?.code
-      ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
+      ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-110.png" alt="" loading="lazy">`
       : "";
     const badge = r.pk.is_captain
       ? `<span class="mtl-cap">C</span>`
       : r.pk.is_vice_captain
         ? `<span class="mtl-cap is-v">V</span>`
         : "";
+    const statusBadge =
+      r.bn >= 2
+        ? `<span class="mtl-j-icon is-star" title="Bonus points">★</span>`
+        : r.status === "Yet to play"
+          ? `<span class="mtl-j-icon is-dice" title="Yet to play">⚄</span>`
+          : "";
+
     const playedCls = r.status === "Played" || r.status === "Playing" ? " is-played" : "";
-    const dcPart = typeof r.dc === "number" && r.dc > 0 ? ` · DC ${r.dc}` : "";
-    const bnPart = r.bn > 0 ? ` · +${r.bn}B` : "";
+    const ownRaw = r.p.selected_by_percent ?? r.p.ownership ?? r.p.own;
+    const ownText = ownRaw !== undefined && ownRaw !== null ? `${parseFloat(ownRaw).toFixed(1)}%` : "–";
+    const fixText = fixtureLabel(r.p.team);
 
     return `<div class="mtl-p-card">
       <div class="mtl-p-shirt">
         ${badge}
         ${img}
+        ${statusBadge}
       </div>
       <div class="mtl-p-pill">
         <div class="mtl-p-name">${esc(r.p.web_name)}</div>
         <div class="mtl-p-pts${playedCls}">${r.total}</div>
-        <div class="mtl-p-sub">${esc(t?.short ?? "")}${bnPart}${dcPart}</div>
+        <div class="mtl-p-split">
+          <span class="mtl-p-own">${esc(ownText)}</span>
+          <span class="mtl-p-fix">${esc(fixText)}</span>
+        </div>
       </div>
     </div>`;
   }
