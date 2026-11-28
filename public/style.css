@@ -7034,3 +7034,611 @@ footer {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+
+
+
+/* ===== fplgameweek.com Dashboard Theme + Pitch View ===== */
+.fplgw-body {
+  background: #23272b;
+  color: #e5e7eb;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+}
+
+.fplgw-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #181c20;
+  border-bottom: 1px solid #343a40;
+}
+
+.fplgw-topbar-left,
+.fplgw-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fplgw-blue-select {
+  background: #0284c7;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.82rem;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.fplgw-more-wrap {
+  position: relative;
+}
+
+.fplgw-more-btn {
+  background: #374151;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.82rem;
+  border: 1px solid #4b5563;
+  border-radius: 5px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.fplgw-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 190px;
+  background: #ffffff;
+  color: #111827;
+  border-radius: 6px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+  overflow: hidden;
+}
+
+.fplgw-dropdown button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: #111827;
+  border: none;
+  padding: 9px 12px;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.fplgw-dropdown button:hover {
+  background: #f1f5f9;
+}
+
+.fplgw-main {
+  max-width: 100%;
+  padding: 10px 12px 24px;
+}
+
+.fplgw-grid {
+  display: grid;
+  grid-template-columns: minmax(290px, 1.05fr) minmax(340px, 1.15fr) minmax(270px, 0.9fr);
+  gap: 10px;
+  align-items: start;
+}
+
+@media (max-width: 1080px) {
+  .fplgw-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fplgw-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fplgw-panel {
+  background: #2b3036;
+  border: 1px solid #3a4048;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.fplgw-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #202428;
+  border-bottom: 1px solid #3a4048;
+}
+
+.fplgw-panel-head h2 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #f9fafb;
+}
+
+.fplgw-view-select {
+  background: #0284c7;
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+/* Pitch View Switch */
+.fplgw-switch-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+
+.fplgw-switch-wrap input {
+  display: none;
+}
+
+.fplgw-switch-slider {
+  width: 34px;
+  height: 18px;
+  background: #4b5563;
+  border-radius: 999px;
+  position: relative;
+  transition: background 0.2s ease;
+}
+
+.fplgw-switch-slider::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.2s ease;
+}
+
+.fplgw-switch-wrap input:checked + .fplgw-switch-slider {
+  background: #10b981;
+}
+
+.fplgw-switch-wrap input:checked + .fplgw-switch-slider::after {
+  transform: translateX(16px);
+}
+
+/* Manager Summary + GW Net / Safety */
+.fplgw-mgr-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #262b30;
+  border-bottom: 1px solid #3a4048;
+}
+
+.fplgw-meta-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  font-size: 0.8rem;
+}
+
+.fplgw-meta-list dt {
+  color: #9ca3af;
+}
+
+.fplgw-meta-list dd {
+  margin: 0;
+  font-weight: 700;
+  color: #f3f4f6;
+}
+
+.fplgw-net-boxes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 78px;
+}
+
+.fplgw-net-box {
+  background: #3f464e;
+  border-radius: 5px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.fplgw-net-box small {
+  display: block;
+  font-size: 0.68rem;
+  color: #d1d5db;
+}
+
+.fplgw-net-box strong {
+  font-size: 1.25rem;
+  color: #ffffff;
+}
+
+.fplgw-safety-box {
+  background: #15803d;
+  border-radius: 5px;
+  padding: 5px 8px;
+  text-align: center;
+  color: #ffffff;
+}
+
+.fplgw-safety-box small {
+  display: block;
+  font-size: 0.66rem;
+  opacity: 0.9;
+}
+
+.fplgw-safety-box strong {
+  font-size: 0.82rem;
+}
+
+/* Standings Table */
+.fplgw-standings-wrap {
+  overflow-x: auto;
+}
+
+.fplgw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.fplgw-table th {
+  text-align: left;
+  padding: 6px 6px;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  border-bottom: 1px solid #3a4048;
+  white-space: nowrap;
+}
+
+.fplgw-table td {
+  padding: 6px 6px;
+  border-bottom: 1px solid #343a40;
+  vertical-align: middle;
+}
+
+.fplgw-table tr.is-mine {
+  background: rgba(2, 132, 199, 0.25);
+}
+
+.fplgw-table tr.is-clickable {
+  cursor: pointer;
+}
+
+.fplgw-table tr.is-clickable:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fplgw-mgr-subline {
+  display: block;
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+
+.fplgw-chip-pill {
+  display: inline-block;
+  background: #374151;
+  color: #e5e7eb;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Player Table (Center Default View) */
+.fplgw-player-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.fplgw-player-table th {
+  text-align: left;
+  padding: 7px 8px;
+  color: #9ca3af;
+  font-size: 0.72rem;
+  background: #23272b;
+  border-bottom: 1px solid #3a4048;
+}
+
+.fplgw-player-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #343a40;
+  vertical-align: middle;
+}
+
+.fplgw-player-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.fplgw-player-cell img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.mtl.is-names-off .fplgw-pname-text,
+.mtl.is-names-off .mtl-p-name {
+  display: none;
+}
+
+.fplgw-status-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: #374151;
+  color: #d1d5db;
+}
+
+.fplgw-status-badge.is-done {
+  background: #15803d;
+  color: #ffffff;
+}
+
+.fplgw-status-badge.is-live {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.fplgw-imp-bar {
+  position: relative;
+  min-width: 64px;
+  height: 18px;
+  background: #181c20;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.fplgw-imp-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #0284c7;
+  z-index: 1;
+}
+
+.fplgw-imp-fill.is-neg {
+  background: #dc2626;
+}
+
+.fplgw-imp-bar span {
+  position: relative;
+  z-index: 2;
+  color: #ffffff;
+}
+
+/* Kopala FPL Pitch View inside Center Column */
+.fplgw-pitch-view {
+  padding: 10px;
+}
+
+.mtl-pitch-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 800 / 760;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.mtl-pitch-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+.mtl-pitch-overlay {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2.5% 2% 4%;
+  box-sizing: border-box;
+}
+
+.mtl-p-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(5px, 1.3vw, 13px);
+}
+
+.mtl-p-card {
+  width: clamp(52px, 10.8vw, 80px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mtl-p-shirt {
+  position: relative;
+  width: 46%;
+  aspect-ratio: 1 / 1.05;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: -2px;
+  z-index: 2;
+}
+
+.mtl-p-shirt img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+}
+
+.mtl-p-shirt .mtl-cap {
+  position: absolute;
+  left: -13px;
+  bottom: 3px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #141c26;
+  color: #ffffff;
+  font-size: 0.56rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ffffff;
+}
+
+.mtl-j-icon {
+  position: absolute;
+  right: -12px;
+  bottom: 3px;
+  font-size: 0.68rem;
+}
+
+.mtl-j-icon.is-star {
+  color: #facc15;
+}
+
+.mtl-j-icon.is-dice {
+  background: #ffffff;
+  color: #111827;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-size: 0.62rem;
+}
+
+.mtl-p-pill {
+  width: 100%;
+  border-radius: 5px;
+  overflow: hidden;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+}
+
+.mtl-p-name {
+  background: #16202c;
+  color: #ffffff;
+  font-size: clamp(0.5rem, 1vw, 0.64rem);
+  font-weight: 600;
+  padding: 2px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mtl-p-pts {
+  background: #178a5b;
+  color: #ffffff;
+  font-size: clamp(0.58rem, 1.15vw, 0.72rem);
+  font-weight: 800;
+  padding: 2px 0;
+}
+
+.mtl-p-pts.is-played {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.mtl-p-split {
+  display: flex;
+  width: 100%;
+  font-size: clamp(0.45rem, 0.9vw, 0.56rem);
+  font-weight: 700;
+}
+
+.mtl-p-own {
+  flex: 1;
+  background: #ffffff;
+  color: #111827;
+  padding: 2px 1px;
+}
+
+.mtl-p-fix {
+  flex: 1.15;
+  background: #6ee787;
+  color: #052e16;
+  padding: 2px 2px;
+}
+
+.mtl-bench-strip {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #3a4048;
+}
+
+.mtl-bench-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #d1d5db;
+}
+
+/* My Feed & Matches */
+.fplgw-feed-row,
+.fplgw-match-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #343a40;
+  font-size: 0.78rem;
+}
+
+.fplgw-match-status {
+  background: #15803d;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.fplgw-extra-drawer {
+  padding: 10px 12px;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #3a4048;
+}
+
+.fplgw-subcard h3 {
+  margin: 0 0 6px;
+  font-size: 0.84rem;
+  color: #f3f4f6;
+}
