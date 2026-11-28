@@ -41,7 +41,8 @@
     <p class="fg-note" id="fg-note" role="status"></p>
 
     <div class="fg-grid">
-      <section class="fg-panel" aria-labelledby="fg-st-h">
+      <!-- Column 1: league standings -->
+      <section class="fg-panel fg-col-standings" aria-labelledby="fg-st-h">
         <div class="fg-head">
           <h2 id="fg-st-h" class="fg-h">League Standings</h2>
           <select id="fg-view" class="fg-blue" aria-label="Standings view">
@@ -52,7 +53,8 @@
         <div id="fg-standings" class="fg-scroll"></div>
       </section>
 
-      <section class="fg-panel" aria-labelledby="fg-team-name">
+      <!-- Column 2: your team -->
+      <section class="fg-panel fg-col-mine" aria-labelledby="fg-team-name">
         <div class="fg-head">
           <div>
             <h2 class="fg-h"><span id="fg-team-name">My team</span></h2>
@@ -97,26 +99,35 @@
         </div>
       </section>
 
-      <section class="fg-panel" id="fg-select-col" aria-labelledby="fg-sel-h">
-        <div class="fg-head"><h2 id="fg-sel-h" class="fg-h">Select team</h2></div>
-        <div id="fg-select" class="fg-scroll"></div>
-      </section>
+      <!-- Column 3: select team, feed and matches -->
+      <div class="fg-stack">
+        <section class="fg-panel" id="fg-select-col" aria-labelledby="fg-sel-h">
+          <div class="fg-head">
+            <h2 id="fg-sel-h" class="fg-h">Select team</h2>
+            <label class="fg-toggle">
+              <span>Pitch View</span>
+              <input type="checkbox" id="fg-select-toggle">
+            </label>
+          </div>
+          <div id="fg-select" class="fg-scroll"></div>
+          <div id="fg-select-pitch" class="fg-pitch-wrap" hidden></div>
+        </section>
 
-      <aside class="fg-right">
         <section class="fg-panel" aria-labelledby="fg-feed-h">
           <div class="fg-head"><h2 id="fg-feed-h" class="fg-h">My Feed</h2></div>
           <div id="fg-feed" class="fg-scroll"></div>
         </section>
+
         <section class="fg-panel" aria-labelledby="fg-match-h">
           <div class="fg-head"><h2 id="fg-match-h" class="fg-h">Matches</h2></div>
           <div id="fg-matches" class="fg-scroll"></div>
         </section>
-      </aside>
+      </div>
     </div>
   </main>
 
   <footer>
-    Data from the official Fantasy Premier League API. Impact and safety figures are our own estimates. Not affiliated with the Premier League.
+    Data from the official Fantasy Premier League API. Impact, safety and in-play counts are our own estimates. Not affiliated with the Premier League.
   </footer>
 </body>
 </html>
