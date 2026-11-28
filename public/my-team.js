@@ -1,4 +1,4 @@
-/* my-team.js: My team, laid out like the live rank and points page.
+/* my-team.js: My team in an fplgameweek.com layout with Kopala FPL Pitch View toggle.
    Points, minutes and bonus come from the live feed while matches are on, and from /api/gwstats otherwise,
    so they stay correct after the match window closes. DC comes from the live feed only.
    Saves (SV pts) are not in FPL's public feed, so they show a dash.
@@ -19,10 +19,14 @@
     snap: null,
     session: null,
     gw: 1,
+    leagueId: "101712",
+    standingsMode: "standard",
+    pitchView: false,
     me: null,
     picks: null,
     mgr: null,
     stats: null,
+    league: null,
     byId: new Map(),
     teamById: new Map(),
   };
@@ -144,18 +148,91 @@
     };
   }
 
-  // ---------- Live rank card ----------
+  // ---------- Live rank & header metrics ----------
   function renderRank(xi, live, states) {
     const me = st.me;
     const gwLive = xi.reduce((sum, pk) => sum + rowData(pk, live, states).total, 0);
+    const hit = Number(st.mgr?.hit) || 0;
+    const gwNet = gwLive - hit;
+
     set("mtl-name", `${me.player_first_name ?? ""} ${me.player_last_name ?? ""}`.trim() || me.name);
     set("mtl-team", me.name);
     set("mtl-rank", me.summary_overall_rank ? Number(me.summary_overall_rank).toLocaleString() : "–");
     set("mtl-gwlive", String(gwLive));
     set("mtl-total", String(me.summary_overall_points ?? 0));
+    set("fplgw-gw-net", String(gwNet));
+    set("fplgw-chip", st.picks?.active_chip ? st.picks.active_chip.toUpperCase() : "–");
+
+    const moves = st.mgr?.transfers ?? [];
+    set("fplgw-tr-summary", `${moves.length} (${hit ? `-${hit}` : "0"})`);
+
+    const gwAvg = st.snap?.events?.find((e) => e.id === st.gw)?.average_entry_score ?? null;
+    if (typeof gwAvg === "number") {
+      const diff = gwNet - gwAvg;
+      set("fplgw-safety", `${gwAvg} (${diff >= 0 ? `+${diff}` : diff})`);
+    } else {
+      set("fplgw-safety", "–");
+    }
   }
 
-  // ---------- Pitch & bench cards ----------
+  // ---------- Player table (Default center view) ----------
+  function renderPlayerTable(xi, bench, live, states) {
+    const tbody = $("fplgw-player-tbody");
+    if (!tbody) return;
+
+    const all = [...xi, ...bench];
+    if (!all.length) {
+      tbody.innerHTML = `<tr><td colspan="4" class="mtl-empty">No players to show.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = all
+      .map((pk) => {
+        const r = rowData(pk, live, states);
+        const t = st.teamById.get(r.p.team);
+        const gk = r.p.element_type === 1;
+        const shirt = t?.code
+          ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
+          : "";
+        const badge = r.pk.is_captain
+          ? ` <span class="mtl-cap">C</span>`
+          : r.pk.is_vice_captain
+            ? ` <span class="mtl-cap is-v">V</span>`
+            : "";
+
+        const statusCls =
+          r.status === "Played" ? "is-done" : r.status === "Playing" ? "is-live" : "";
+        const statusLabel =
+          r.status === "Played"
+            ? `Done (${r.p ? figures(r.p.id, live).minutes : 0})`
+            : r.status === "Yet to play"
+              ? fixtureLabel(r.p.team)
+              : r.status;
+
+        const ownVal = parseFloat(r.p.selected_by_percent ?? 0) || 0;
+        const widthPct = Math.min(100, Math.max(8, ownVal));
+
+        return `<tr>
+          <td>
+            <div class="fplgw-player-cell">
+              ${shirt}
+              <span class="fplgw-pname-text">${esc(r.p.web_name)}${badge}</span>
+            </div>
+          </td>
+          <td><span class="fplgw-status-badge ${statusCls}">${esc(statusLabel)}</span></td>
+          <td><b>${r.total}</b></td>
+          <td>
+            <div class="fplgw-imp-bar">
+              <div class="fplgw-imp-fill" style="width:${widthPct}%"></div>
+              <span>${ownVal.toFixed(0)}%</span>
+            </div>
+          </td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  // ---------- Kopala FPL Pitch & bench cards ----------
   function cardHtml(r) {
     const t = st.teamById.get(r.p.team);
     const gk = r.p.element_type === 1;
@@ -216,6 +293,102 @@
       : `<p class="mtl-empty">No bench players to show.</p>`;
   }
 
+  // ---------- League Standings (Left column) ----------
+  function renderStandings() {
+    const box = $("fplgw-standings");
+    if (!box) return;
+
+    const entries = st.league?.standings?.results ?? [];
+    if (!entries.length) {
+      box.innerHTML = `<p class="mtl-empty">League standings unavailable for this GW.</p>`;
+      return;
+    }
+
+    const compact = st.standingsMode === "compact";
+    const rows = entries
+      .slice(0, 25)
+      .map((row) => {
+        const isMine = String(row.entry) === String(st.session?.entryId);
+        const delta = (row.last_rank || row.rank) - row.rank;
+        const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "–";
+        const capName = nameOf(row.captain);
+
+        return `<tr class="${isMine ? "is-mine" : ""} is-clickable" data-entry="${row.entry}">
+          <td><b>${row.rank}</b><div>${arrow}</div></td>
+          <td>
+            <b>${esc(row.entry_name)}</b>
+            ${compact ? "" : `<span class="fplgw-mgr-subline">${esc(row.player_name)}</span>`}
+            <span class="fplgw-mgr-subline">${esc(capName)}</span>
+          </td>
+          <td>${row.event_total}</td>
+          <td><b>${row.total}</b></td>
+        </tr>`;
+      })
+      .join("");
+
+    box.innerHTML = `<table class="fplgw-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Team</th>
+          <th>GW</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  // ---------- My Feed & Matches (Right column) ----------
+  function renderFeedAndMatches(xi, live) {
+    const feedBox = $("fplgw-feed");
+    const matchesBox = $("fplgw-matches");
+
+    if (feedBox) {
+      const events = [];
+      for (const pk of xi) {
+        const p = st.byId.get(pk.element);
+        const f = figures(pk.element, live);
+        if (p && f.bn > 0) {
+          events.push({
+            player: p.web_name,
+            team: st.teamById.get(p.team)?.short ?? "",
+            label: `${f.bn} Bonus pts`,
+            pts: `+${f.bn} pts`,
+          });
+        }
+      }
+      feedBox.innerHTML = events.length
+        ? events
+            .map(
+              (ev) => `<div class="fplgw-feed-row">
+                <div><b>${esc(ev.player)}</b><div class="fplgw-mgr-subline">${esc(ev.team)} · ${esc(ev.label)}</div></div>
+                <b>${esc(ev.pts)}</b>
+              </div>`,
+            )
+            .join("")
+        : `<p class="mtl-empty">No live scoring events yet.</p>`;
+    }
+
+    if (matchesBox && st.snap?.fixtures) {
+      const gwFix = st.snap.fixtures.filter((f) => f.gw === st.gw).slice(0, 10);
+      matchesBox.innerHTML = gwFix.length
+        ? gwFix
+            .map((f) => {
+              const h = st.teamById.get(f.home)?.short ?? "HOM";
+              const a = st.teamById.get(f.away)?.short ?? "AWY";
+              const score = f.started ? `${f.home_score ?? 0} - ${f.away_score ?? 0}` : "? - ?";
+              const tag = f.finished ? "Done" : f.started ? "Live" : "Upcoming";
+              return `<div class="fplgw-match-row">
+                <span><b>${esc(h)}</b> ${esc(score)} <b>${esc(a)}</b></span>
+                <span class="fplgw-match-status">${esc(tag)}</span>
+              </div>`;
+            })
+            .join("")
+        : `<p class="mtl-empty">No fixtures found.</p>`;
+    }
+  }
+
   // ---------- Transfers ----------
   function renderTransfers() {
     const box = $("mtl-tr");
@@ -273,6 +446,13 @@
       .join("")}</dl>`;
   }
 
+  function applyPitchToggle() {
+    const tableEl = $("fplgw-table-view");
+    const pitchEl = $("fplgw-pitch-view");
+    if (tableEl) tableEl.hidden = st.pitchView;
+    if (pitchEl) pitchEl.hidden = !st.pitchView;
+  }
+
   // ---------- Drawing ----------
   function draw() {
     set("mtl-updated", `Updated ${timeNow()}`);
@@ -289,9 +469,13 @@
       : [];
 
     safe("Live rank", () => renderRank(xi, live, states));
+    safe("Player table", () => renderPlayerTable(xi, bench, live, states));
     safe("Pitch", () => renderPitch(xi, bench, live, states));
+    safe("Standings", renderStandings);
+    safe("Feed & Matches", () => renderFeedAndMatches(xi, live));
     safe("Transfers", renderTransfers);
     safe("Summary", () => renderSummary(xi, live));
+    applyPitchToggle();
   }
 
   // ---------- Loading ----------
@@ -304,18 +488,28 @@
     }
   }
 
+  async function loadLeague(leagueId, gw) {
+    try {
+      return await api(`/league/${leagueId}?gw=${gw}`);
+    } catch {
+      return null;
+    }
+  }
+
   async function loadAll() {
     const auth = { headers: { Authorization: `Bearer ${st.session.token}` } };
-    const [meRes, picksRes, mgrRes, stats] = await Promise.all([
+    const [meRes, picksRes, mgrRes, stats, leagueRes] = await Promise.all([
       api("/me", auth),
       api(`/picks/${st.session.entryId}/${st.gw}`).catch(() => null),
       api(`/managers?ids=${st.session.entryId}`).catch(() => null),
       loadStats(st.gw),
+      loadLeague(st.leagueId, st.gw),
     ]);
     st.me = meRes.entry;
     st.picks = picksRes;
     st.mgr = mgrRes?.managers?.[0] ?? null;
     st.stats = stats;
+    st.league = leagueRes;
     set("mtl-note", "");
     draw();
   }
@@ -332,14 +526,67 @@
 
   // ---------- Wiring ----------
   function wire() {
-    $("mtl-names").addEventListener("change", (e) => {
-      $("mtl").classList.toggle("is-names-off", !e.target.checked);
+    $("mtl-names")?.addEventListener("change", (e) => {
+      $("mtl")?.classList.toggle("is-names-off", !e.target.checked);
     });
-    $("mtl-refresh").addEventListener("click", refresh);
+    $("mtl-refresh")?.addEventListener("click", refresh);
+
+    $("fplgw-pitch-toggle")?.addEventListener("change", (e) => {
+      st.pitchView = e.target.checked;
+      applyPitchToggle();
+    });
+
+    $("fplgw-league-select")?.addEventListener("change", async (e) => {
+      st.leagueId = e.target.value;
+      st.league = await loadLeague(st.leagueId, st.gw);
+      safe("Standings", renderStandings);
+    });
+
+    $("fplgw-gw-select")?.addEventListener("change", async (e) => {
+      const val = Number(e.target.value);
+      if (val) {
+        st.gw = val;
+        await refresh();
+      }
+    });
+
+    $("fplgw-view-mode")?.addEventListener("change", (e) => {
+      st.standingsMode = e.target.value;
+      safe("Standings", renderStandings);
+    });
+
+    const moreBtn = $("fplgw-more-btn");
+    const moreMenu = $("fplgw-more-menu");
+    moreBtn?.addEventListener("click", () => {
+      const open = moreMenu.hidden;
+      moreMenu.hidden = !open;
+      moreBtn.setAttribute("aria-expanded", String(open));
+    });
+
+    moreMenu?.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      moreMenu.hidden = true;
+      moreBtn.setAttribute("aria-expanded", "false");
+      if (btn.dataset.action === "top") window.scrollTo({ top: 0, behavior: "smooth" });
+      if (btn.dataset.action === "standings") refresh();
+      if (btn.dataset.action === "summary") {
+        $("fplgw-extra-drawer")?.scrollIntoView({ behavior: "smooth" });
+      }
+    });
+  }
+
+  function populateGwSelect() {
+    const sel = $("fplgw-gw-select");
+    if (!sel || !st.snap?.events) return;
+    sel.innerHTML = st.snap.events
+      .map((ev) => `<option value="${ev.id}"${ev.id === st.gw ? " selected" : ""}>GW ${ev.id}</option>`)
+      .join("");
   }
 
   async function init() {
     setNavCurrent();
+    populateGwSelect();
     wire();
 
     st.session = readSession();
