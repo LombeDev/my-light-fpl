@@ -1,8 +1,8 @@
-/* my-team.js: My team in an fplgameweek.com layout with Kopala FPL Pitch View toggle.
-   Points, minutes and bonus come from the live feed while matches are on, and from /api/gwstats otherwise,
-   so they stay correct after the match window closes. DC comes from the live feed only.
-   Saves (SV pts) are not in FPL's public feed, so they show a dash.
-   Each section runs on its own, so one failure does not stop the rest. Page key: team-view. */
+/* my-team.js: My team in the FPL Gameweek dashboard layout.
+   Standings, the Select team comparison, the player table with impact, transfers, the feed and matches
+   all come from data the site already loads. Points come from the live feed during matches, otherwise
+   from /api/gwstats. Impact is our own estimate: for your players it is 100 minus their ownership, and for
+   others it is minus their ownership. Page key: team-view. Each section runs on its own. */
 (() => {
   if (document.body.dataset.page !== "team-view") return;
 
@@ -11,22 +11,33 @@
     const el = $(id);
     if (el) el.textContent = text;
   };
+  const html = (id, markup) => {
+    const el = $(id);
+    if (el) el.innerHTML = markup;
+  };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const SHIRTS = "https://fantasy.premierleague.com/dist/img/shirts/standard";
-  const POS = { 1: "GKP", 2: "DEF", 3: "MID", 4: "FWD" };
+  const FALLBACK_LEAGUES = [{ id: 101712, name: "Kopala EPL" }];
 
   const st = {
     snap: null,
     session: null,
     gw: 1,
-    leagueId: "101712",
-    standingsMode: "standard",
-    pitchView: false,
+    leagues: [],
+    leagueId: null,
+    leagueName: "",
+    standingsView: "standard",
+    pitch: false,
+    tab: "imp",
     me: null,
     picks: null,
     mgr: null,
     stats: null,
-    league: null,
+    rows: [],
+    managersById: new Map(),
+    selected: null,
+    selPicks: null,
+    selMgr: null,
     byId: new Map(),
     teamById: new Map(),
   };
@@ -40,7 +51,7 @@
       fn();
     } catch (err) {
       console.error(`${name} failed:`, err);
-      set("mtl-note", `${name} could not load: ${err.message}`);
+      set("fg-note", `${name} could not load: ${err.message}`);
     }
   }
 
@@ -74,407 +85,415 @@
 
   const liveMap = () => window.FPL?.live?.() ?? new Map();
   const nameOf = (id) => st.byId.get(id)?.web_name ?? "Unknown";
-  const timeNow = () => new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const ownOf = (p) => {
+    const v = parseFloat(p?.selected_by_percent);
+    return Number.isFinite(v) ? v : 0;
+  };
+  const short = (teamId) => st.teamById.get(teamId)?.short ?? "";
 
-  function clubStates() {
-    const seen = new Map();
-    for (const f of st.snap.fixtures) {
-      if (f.gw !== st.gw) continue;
-      for (const t of [f.home, f.away]) {
-        const list = seen.get(t) ?? [];
-        list.push(f.finished ? "finished" : f.started ? "started" : "sleep");
-        seen.set(t, list);
-      }
-    }
-    const out = new Map();
-    for (const [t, list] of seen) {
-      if (list.every((s) => s === "finished")) out.set(t, "finished");
-      else if (list.some((s) => s !== "sleep")) out.set(t, "started");
-      else out.set(t, "sleep");
-    }
-    return out;
+  function kickoffLabel(iso) {
+    if (!iso) return "TBC";
+    const d = new Date(iso);
+    const day = d.toLocaleDateString("en-GB", { weekday: "short" });
+    return `${day} ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
   }
 
-  function fixtureLabel(teamId) {
-    if (!teamId || !st.snap?.fixtures) return "–";
-    const list = st.snap.fixtures.filter(
-      (f) => f.gw === st.gw && (f.home === teamId || f.away === teamId),
+  function fixturesForGw() {
+    if (!st.snap?.fixtures) return [];
+    return st.snap.fixtures.filter((f) => f.gw === st.gw);
+  }
+
+  function fixtureFor(teamId) {
+    return (
+      fixturesForGw()
+        .filter((f) => f.home === teamId || f.away === teamId)
+        .sort((a, b) => (a.kickoff ?? "~").localeCompare(b.kickoff ?? "~"))[0] ?? null
     );
-    if (!list.length) return "BLANK";
-    return list
-      .map((f) => {
-        const isHome = f.home === teamId;
-        const oppId = isHome ? f.away : f.home;
-        const oppShort = st.teamById.get(oppId)?.short ?? "???";
-        return `${oppShort} (${isHome ? "H" : "A"})`;
-      })
-      .join(", ");
   }
 
+  // "finished", "started", "sleep" (not yet kicked off), or "none" (no fixture this gameweek).
+  function clubState(teamId) {
+    const list = fixturesForGw().filter((f) => f.home === teamId || f.away === teamId);
+    if (!list.length) return "none";
+    if (list.every((f) => f.finished)) return "finished";
+    if (list.some((f) => f.started && !f.finished)) return "started";
+    return "sleep";
+  }
+
+  // Points for a player this gameweek. The live feed is used during matches, otherwise the stored gameweek stats.
   function figures(id, live) {
     const d = live.get(id);
     const s = st.stats?.get(id);
-    if (d) {
-      return { pts: d.p, minutes: d.m, bn: d.bn ?? 0, dc: d.dc ?? null };
-    }
-    if (s) {
-      return { pts: s.pts ?? 0, minutes: s.minutes ?? 0, bn: s.bn ?? 0, dc: null };
-    }
+    if (d) return { pts: d.p, minutes: d.m, bn: d.bn ?? 0, dc: d.dc ?? null };
+    if (s) return { pts: s.pts ?? 0, minutes: s.minutes ?? 0, bn: s.bn ?? 0, dc: null };
     return { pts: 0, minutes: 0, bn: 0, dc: null };
   }
 
-  function rowData(pk, live, states) {
-    const p = st.byId.get(pk.element);
-    const f = figures(pk.element, live);
-    const mult = pk.multiplier ?? 1;
-    const fixState = p ? states.get(p.team) : undefined;
-
-    let status;
-    if (!p) status = "Unknown";
-    else if (f.minutes > 0) status = fixState === "finished" ? "Played" : "Playing";
-    else if (fixState === "finished") status = "Did not play";
-    else if (fixState === undefined) status = "No fixture";
-    else status = "Yet to play";
-
-    return {
-      p,
-      pk,
-      pts: f.pts,
-      mult,
-      total: f.pts * mult,
-      bn: f.bn,
-      dc: f.dc,
-      status,
-    };
+  function statusOf(p, live) {
+    const f = figures(p.id, live);
+    const cs = clubState(p.team);
+    if (f.minutes > 0 && cs === "finished") return { label: `Done (${f.minutes}) (P)`, cls: "is-done" };
+    if (f.minutes > 0) return { label: `Playing (${f.minutes}')`, cls: "is-live" };
+    if (cs === "finished") return { label: "Did not play", cls: "is-dnp" };
+    if (cs === "none") return { label: "No fixture", cls: "is-dnp" };
+    return { label: kickoffLabel(fixtureFor(p.team)?.kickoff), cls: "" };
   }
 
-  // ---------- Live rank & header metrics ----------
-  function renderRank(xi, live, states) {
-    const me = st.me;
-    const gwLive = xi.reduce((sum, pk) => sum + rowData(pk, live, states).total, 0);
-    const hit = Number(st.mgr?.hit) || 0;
-    const gwNet = gwLive - hit;
-
-    set("mtl-name", `${me.player_first_name ?? ""} ${me.player_last_name ?? ""}`.trim() || me.name);
-    set("mtl-team", me.name);
-    set("mtl-rank", me.summary_overall_rank ? Number(me.summary_overall_rank).toLocaleString() : "–");
-    set("mtl-gwlive", String(gwLive));
-    set("mtl-total", String(me.summary_overall_points ?? 0));
-    set("fplgw-gw-net", String(gwNet));
-    set("fplgw-chip", st.picks?.active_chip ? st.picks.active_chip.toUpperCase() : "–");
-
-    const moves = st.mgr?.transfers ?? [];
-    set("fplgw-tr-summary", `${moves.length} (${hit ? `-${hit}` : "0"})`);
-
-    const gwAvg = st.snap?.events?.find((e) => e.id === st.gw)?.average_entry_score ?? null;
-    if (typeof gwAvg === "number") {
-      const diff = gwNet - gwAvg;
-      set("fplgw-safety", `${gwAvg} (${diff >= 0 ? `+${diff}` : diff})`);
-    } else {
-      set("fplgw-safety", "–");
-    }
+  function impOf(p, inTeam) {
+    return inTeam ? 100 - ownOf(p) : -ownOf(p);
   }
 
-  // ---------- Player table (Default center view) ----------
-  function renderPlayerTable(xi, bench, live, states) {
-    const tbody = $("fplgw-player-tbody");
-    if (!tbody) return;
-
-    const all = [...xi, ...bench];
-    if (!all.length) {
-      tbody.innerHTML = `<tr><td colspan="4" class="mtl-empty">No players to show.</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = all
-      .map((pk) => {
-        const r = rowData(pk, live, states);
-        const t = st.teamById.get(r.p.team);
-        const gk = r.p.element_type === 1;
-        const shirt = t?.code
-          ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
-          : "";
-        const badge = r.pk.is_captain
-          ? ` <span class="mtl-cap">C</span>`
-          : r.pk.is_vice_captain
-            ? ` <span class="mtl-cap is-v">V</span>`
-            : "";
-
-        const statusCls =
-          r.status === "Played" ? "is-done" : r.status === "Playing" ? "is-live" : "";
-        const statusLabel =
-          r.status === "Played"
-            ? `Done (${r.p ? figures(r.p.id, live).minutes : 0})`
-            : r.status === "Yet to play"
-              ? fixtureLabel(r.p.team)
-              : r.status;
-
-        const ownVal = parseFloat(r.p.selected_by_percent ?? 0) || 0;
-        const widthPct = Math.min(100, Math.max(8, ownVal));
-
-        return `<tr>
-          <td>
-            <div class="fplgw-player-cell">
-              ${shirt}
-              <span class="fplgw-pname-text">${esc(r.p.web_name)}${badge}</span>
-            </div>
-          </td>
-          <td><span class="fplgw-status-badge ${statusCls}">${esc(statusLabel)}</span></td>
-          <td><b>${r.total}</b></td>
-          <td>
-            <div class="fplgw-imp-bar">
-              <div class="fplgw-imp-fill" style="width:${widthPct}%"></div>
-              <span>${ownVal.toFixed(0)}%</span>
-            </div>
-          </td>
-        </tr>`;
-      })
-      .join("");
+  // The impact bar's width is set in JavaScript after render, because inline style attributes are blocked by the CSP.
+  function impCell(v) {
+    const w = Math.min(100, Math.abs(v));
+    const cls = v >= 0 ? "is-pos" : "is-neg";
+    return `<div class="fg-imp"><div class="fg-imp-track"><i class="${cls}" data-w="${w.toFixed(1)}"></i></div><span>${v > 0 ? "+" : ""}${Math.round(v)}%</span></div>`;
   }
 
-  // ---------- Kopala FPL Pitch & bench cards ----------
-  function cardHtml(r) {
-    const t = st.teamById.get(r.p.team);
-    const gk = r.p.element_type === 1;
-    const img = t?.code
-      ? `<img src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-110.png" alt="" loading="lazy">`
+  function applyWidths(root) {
+    (root ?? document).querySelectorAll("[data-w]").forEach((el) => {
+      el.style.width = `${el.dataset.w}%`;
+    });
+  }
+
+  function badgeFor(pk) {
+    if (pk?.is_captain) return `<span class="fg-cv">C</span>`;
+    if (pk?.is_vice_captain) return `<span class="fg-cv is-v">V</span>`;
+    return "";
+  }
+
+  function shirtFor(p) {
+    const t = st.teamById.get(p.team);
+    const gk = p.element_type === 1;
+    return t?.code
+      ? `<img class="fg-shirt" src="${SHIRTS}/shirt_${t.code}${gk ? "_1" : ""}-66.png" alt="" loading="lazy">`
       : "";
-    const badge = r.pk.is_captain
-      ? `<span class="mtl-cap">C</span>`
-      : r.pk.is_vice_captain
-        ? `<span class="mtl-cap is-v">V</span>`
-        : "";
-    const statusBadge =
-      r.bn >= 2
-        ? `<span class="mtl-j-icon is-star" title="Bonus points">★</span>`
-        : r.status === "Yet to play"
-          ? `<span class="mtl-j-icon is-dice" title="Yet to play">⚄</span>`
-          : "";
-
-    const playedCls = r.status === "Played" || r.status === "Playing" ? " is-played" : "";
-    const ownRaw = r.p.selected_by_percent ?? r.p.ownership ?? r.p.own;
-    const ownText = ownRaw !== undefined && ownRaw !== null ? `${parseFloat(ownRaw).toFixed(1)}%` : "–";
-    const fixText = fixtureLabel(r.p.team);
-
-    return `<div class="mtl-p-card">
-      <div class="mtl-p-shirt">
-        ${badge}
-        ${img}
-        ${statusBadge}
-      </div>
-      <div class="mtl-p-pill">
-        <div class="mtl-p-name">${esc(r.p.web_name)}</div>
-        <div class="mtl-p-pts${playedCls}">${r.total}</div>
-        <div class="mtl-p-split">
-          <span class="mtl-p-own">${esc(ownText)}</span>
-          <span class="mtl-p-fix">${esc(fixText)}</span>
-        </div>
-      </div>
-    </div>`;
   }
 
-  function renderPitch(xi, bench, live, states) {
-    const groups = { GKP: [], DEF: [], MID: [], FWD: [] };
-
-    for (const pk of xi) {
-      const r = rowData(pk, live, states);
-      const posKey = POS[r.p?.element_type];
-      if (posKey && groups[posKey]) groups[posKey].push(r);
-    }
-
-    for (const [posKey, list] of Object.entries(groups)) {
-      const el = $(`mtl-${posKey.toLowerCase()}`);
-      if (el) el.innerHTML = list.map(cardHtml).join("");
-    }
-
-    const benchRows = bench.map((pk) => rowData(pk, live, states));
-    $("mtl-bench").innerHTML = benchRows.length
-      ? benchRows.map(cardHtml).join("")
-      : `<p class="mtl-empty">No bench players to show.</p>`;
+  function squadOf(picks) {
+    const list = picks?.picks ?? [];
+    return {
+      xi: list.filter((pk) => pk.position <= 11).sort((a, b) => a.position - b.position),
+      bench: list.filter((pk) => pk.position > 11).sort((a, b) => a.position - b.position),
+    };
   }
 
-  // ---------- League Standings (Left column) ----------
-  function renderStandings() {
-    const box = $("fplgw-standings");
-    if (!box) return;
+  function gwPointsOf(squad, live) {
+    return squad.xi.reduce((sum, pk) => sum + figures(pk.element, live).pts * (pk.multiplier ?? 1), 0);
+  }
 
-    const entries = st.league?.standings?.results ?? [];
-    if (!entries.length) {
-      box.innerHTML = `<p class="mtl-empty">League standings unavailable for this GW.</p>`;
+  // One table row. Options: pk (for captain badge and multiplier), imp (number), impText (custom), dim.
+  function rowHtml(p, live, opts = {}) {
+    if (!p) return "";
+    const f = figures(p.id, live);
+    const s = statusOf(p, live);
+    const mult = opts.pk?.multiplier ?? 1;
+    const impHtml = opts.impText ?? impCell(opts.imp ?? 0);
+    return `<tr class="${opts.dim ? "fg-dim" : ""}">
+      <td><div class="fg-player">${shirtFor(p)}<span class="fg-name">${esc(p.web_name)}</span>${badgeFor(opts.pk)}</div></td>
+      <td><span class="fg-status ${s.cls}">${esc(s.label)}</span></td>
+      <td class="fg-num"><b>${f.pts * mult}</b></td>
+      <td>${impHtml}</td>
+    </tr>`;
+  }
+
+  // ---------- Header: team, summary and boxes ----------
+  function renderHeader(squad, live) {
+    const me = st.me;
+    if (!me) return;
+    set("fg-team-name", me.name);
+    set("fg-mgr-name", `${me.player_first_name ?? ""} ${me.player_last_name ?? ""}`.trim());
+
+    const gross = gwPointsOf(squad, live);
+    const hit = Number(st.mgr?.hit) || 0;
+    const moves = st.mgr?.transfers ?? [];
+    const chip = st.picks?.active_chip ?? st.mgr?.chip ?? "";
+    const value = st.mgr?.value ?? null;
+    const rank = me.summary_overall_rank ? Number(me.summary_overall_rank).toLocaleString() : "–";
+
+    set("fg-gw-net", String(gross - hit));
+    set("fg-safety", "–");
+
+    html(
+      "fg-info",
+      [
+        ["Total points", me.summary_overall_points ?? "–"],
+        ["GW points", gross],
+        ["Transfers", `${moves.length}${hit ? ` (−${hit})` : ""}`],
+        ["Live rank", rank],
+        ["Chip", chip ? String(chip).toUpperCase() : "None"],
+        ["Team value", value === null ? "–" : `£${(value / 10).toFixed(1)}m`],
+      ]
+        .map(([k, v]) => `<div class="fg-kv"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`)
+        .join(""),
+    );
+  }
+
+  // ---------- Player table: starting XI, then bench ----------
+  function renderTable(squad, live) {
+    if (!st.picks) {
+      html("fg-table-body", `<tr><td colspan="4" class="fg-empty">Picks for this gameweek are not available yet.</td></tr>`);
       return;
     }
+    const xi = squad.xi
+      .map((pk) => {
+        const p = st.byId.get(pk.element);
+        return rowHtml(p, live, { pk, imp: impOf(p, true) });
+      })
+      .join("");
+    const bench = squad.bench
+      .map((pk) => {
+        const p = st.byId.get(pk.element);
+        return rowHtml(p, live, { imp: impOf(p, true), dim: true });
+      })
+      .join("");
+    html("fg-table-body", `${xi}<tr class="fg-divider"><td colspan="4">Bench</td></tr>${bench}`);
+    applyWidths($("fg-table-body"));
+  }
 
-    const compact = st.standingsMode === "compact";
-    const rows = entries
-      .slice(0, 25)
-      .map((row) => {
-        const isMine = String(row.entry) === String(st.session?.entryId);
-        const delta = (row.last_rank || row.rank) - row.rank;
-        const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "–";
-        const capName = nameOf(row.captain);
+  // ---------- Pitch view ----------
+  function renderPitch(squad, live) {
+    const groups = { 1: [], 2: [], 3: [], 4: [] };
+    for (const pk of squad.xi) {
+      const p = st.byId.get(pk.element);
+      if (p) groups[p.element_type].push({ pk, p });
+    }
 
-        return `<tr class="${isMine ? "is-mine" : ""} is-clickable" data-entry="${row.entry}">
-          <td><b>${row.rank}</b><div>${arrow}</div></td>
-          <td>
-            <b>${esc(row.entry_name)}</b>
-            ${compact ? "" : `<span class="fplgw-mgr-subline">${esc(row.player_name)}</span>`}
-            <span class="fplgw-mgr-subline">${esc(capName)}</span>
-          </td>
-          <td>${row.event_total}</td>
-          <td><b>${row.total}</b></td>
-        </tr>`;
+    const card = ({ pk, p }) => {
+      const pts = figures(p.id, live).pts * (pk?.multiplier ?? 1);
+      return `<div class="fg-pcard">
+        ${shirtFor(p)}
+        <div class="fg-pname">${esc(p.web_name)} ${badgeFor(pk)}</div>
+        <div class="fg-ppts">${pts}</div>
+      </div>`;
+    };
+
+    const field = [1, 2, 3, 4].map((t) => `<div class="fg-prow">${groups[t].map(card).join("")}</div>`).join("");
+    const bench = squad.bench
+      .map((pk) => {
+        const p = st.byId.get(pk.element);
+        return p ? card({ pk: null, p }) : "";
       })
       .join("");
 
-    box.innerHTML = `<table class="fplgw-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Team</th>
-          <th>GW</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-  }
-
-  // ---------- My Feed & Matches (Right column) ----------
-  function renderFeedAndMatches(xi, live) {
-    const feedBox = $("fplgw-feed");
-    const matchesBox = $("fplgw-matches");
-
-    if (feedBox) {
-      const events = [];
-      for (const pk of xi) {
-        const p = st.byId.get(pk.element);
-        const f = figures(pk.element, live);
-        if (p && f.bn > 0) {
-          events.push({
-            player: p.web_name,
-            team: st.teamById.get(p.team)?.short ?? "",
-            label: `${f.bn} Bonus pts`,
-            pts: `+${f.bn} pts`,
-          });
-        }
-      }
-      feedBox.innerHTML = events.length
-        ? events
-            .map(
-              (ev) => `<div class="fplgw-feed-row">
-                <div><b>${esc(ev.player)}</b><div class="fplgw-mgr-subline">${esc(ev.team)} · ${esc(ev.label)}</div></div>
-                <b>${esc(ev.pts)}</b>
-              </div>`,
-            )
-            .join("")
-        : `<p class="mtl-empty">No live scoring events yet.</p>`;
-    }
-
-    if (matchesBox && st.snap?.fixtures) {
-      const gwFix = st.snap.fixtures.filter((f) => f.gw === st.gw).slice(0, 10);
-      matchesBox.innerHTML = gwFix.length
-        ? gwFix
-            .map((f) => {
-              const h = st.teamById.get(f.home)?.short ?? "HOM";
-              const a = st.teamById.get(f.away)?.short ?? "AWY";
-              const score = f.started ? `${f.home_score ?? 0} - ${f.away_score ?? 0}` : "? - ?";
-              const tag = f.finished ? "Done" : f.started ? "Live" : "Upcoming";
-              return `<div class="fplgw-match-row">
-                <span><b>${esc(h)}</b> ${esc(score)} <b>${esc(a)}</b></span>
-                <span class="fplgw-match-status">${esc(tag)}</span>
-              </div>`;
-            })
-            .join("")
-        : `<p class="mtl-empty">No fixtures found.</p>`;
-    }
-  }
-
-  // ---------- Transfers ----------
-  function renderTransfers() {
-    const box = $("mtl-tr");
-    const m = st.mgr;
-    if (!m) {
-      box.innerHTML = `<p class="mtl-empty">Transfers are not available yet.</p>`;
-      return;
-    }
-    const moves = m.transfers ?? [];
-    const ins = moves.map((t) => nameOf(t.inId));
-    const outs = moves.map((t) => nameOf(t.outId));
-    const hit = Number(m.hit) || 0;
-
-    box.innerHTML = `<div class="mtl-trgrid">
-      <div><span class="mtl-k">In</span><b>${ins.length}</b><small>${esc(ins.join(", ") || "None")}</small></div>
-      <div><span class="mtl-k">Out</span><b>${outs.length}</b><small>${esc(outs.join(", ") || "None")}</small></div>
-      <div><span class="mtl-k">Net pts (+/-)</span><b>${hit ? `−${hit}` : "0"}</b></div>
-    </div>`;
-  }
-
-  // ---------- Gameweek summary (starting XI only) ----------
-  function renderSummary(xi, live) {
-    const box = $("mtl-sum");
-    if (!st.stats) {
-      box.innerHTML = `<p class="mtl-empty">The gameweek summary is not available yet.</p>`;
-      return;
-    }
-    const ids = xi.map((pk) => pk.element);
-    const isDefOrGk = (id) => {
-      const p = st.byId.get(id);
-      return !!p && (p.element_type === 1 || p.element_type === 2);
-    };
-    const sum = (key, filter = () => true) =>
-      ids.reduce((total, id) => {
-        const e = st.stats.get(id);
-        return filter(id) && e ? total + (e[key] || 0) : total;
-      }, 0);
-    const dcTotal = ids.reduce((total, id) => total + (figures(id, live).dc ?? 0), 0);
-
-    const items = [
-      ["Goals", sum("gs")],
-      ["Assists", sum("a")],
-      ["Clean sheets (GK+DEF)", sum("cs", isDefOrGk)],
-      ["DefCon pts", dcTotal],
-      ["Bonus", sum("bn")],
-      ["Pens missed / saved", `${sum("pm")}/${sum("ps")}`],
-      ["Conceded (GK+DEF)", sum("gc", isDefOrGk)],
-      ["Own goals", sum("og")],
-      ["Yellow cards", sum("yc")],
-      ["Red cards", sum("rc")],
-    ];
-
-    box.innerHTML = `<dl class="mtl-sumgrid">${items
-      .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(String(v))}</dd></div>`)
-      .join("")}</dl>`;
+    html(
+      "fg-pitch",
+      `<div class="fg-field">${field}</div>
+       <div class="fg-bench-label">Bench</div>
+       <div class="fg-prow fg-prow-bench">${bench}</div>`,
+    );
   }
 
   function applyPitchToggle() {
-    const tableEl = $("fplgw-table-view");
-    const pitchEl = $("fplgw-pitch-view");
-    if (tableEl) tableEl.hidden = st.pitchView;
-    if (pitchEl) pitchEl.hidden = !st.pitchView;
+    const tableWrap = $("fg-table-wrap");
+    const lower = document.querySelector(".fg-tabs")?.nextElementSibling;
+    const pitch = $("fg-pitch");
+    if (tableWrap) tableWrap.hidden = st.pitch;
+    if (pitch) pitch.hidden = !st.pitch;
+    if (lower) lower.hidden = st.pitch;
+    document.querySelector(".fg-tabs")?.toggleAttribute("hidden", st.pitch);
+  }
+
+  // ---------- Other important players / transfer suggestions ----------
+  function renderLower(squad, live) {
+    const inTeam = new Set([...squad.xi, ...squad.bench].map((pk) => pk.element));
+    const others = st.snap.players.filter((p) => !inTeam.has(p.id));
+
+    let rows;
+    if (st.tab === "transfers") {
+      const net = (p) => (Number(p.transfers_in) || 0) - (Number(p.transfers_out) || 0);
+      rows = others
+        .slice()
+        .sort((a, b) => net(b) - net(a))
+        .slice(0, 10)
+        .map((p) => {
+          const n = net(p);
+          const text = `<span class="fg-net">${n > 0 ? "+" : ""}${n.toLocaleString()} net</span>`;
+          return rowHtml(p, live, { impText: text });
+        });
+    } else {
+      rows = others
+        .slice()
+        .sort((a, b) => ownOf(b) - ownOf(a))
+        .slice(0, 10)
+        .map((p) => rowHtml(p, live, { imp: impOf(p, false) }));
+    }
+
+    html("fg-lower-body", rows.join("") || `<tr><td colspan="4" class="fg-empty">No players to show.</td></tr>`);
+    applyWidths($("fg-lower-body"));
+
+    document.querySelectorAll(".fg-tab").forEach((b) => {
+      b.setAttribute("aria-selected", String(b.dataset.tab === st.tab));
+    });
+  }
+
+  // ---------- League standings ----------
+  function renderStandings() {
+    if (!st.rows.length) {
+      html("fg-standings", `<p class="fg-empty">League standings are not available right now.</p>`);
+      return;
+    }
+    const compact = st.standingsView === "compact";
+    const mineId = String(st.session?.entryId ?? "");
+
+    const body = st.rows
+      .map((r, i) => {
+        const m = st.managersById.get(r.entry);
+        const mine = String(r.entry) === mineId;
+        const cap = m ? nameOf(m.captainId) : "–";
+        const chip = m?.chip ?? "";
+        const gwNet = m ? (Number(m.gross) || 0) - (Number(m.hit) || 0) : Number(r.gw) || 0;
+        const pos = r.rank ?? i + 1;
+        return `<tr class="${mine ? "is-mine" : ""}" data-entry="${r.entry}">
+          <td class="fg-num">${pos}</td>
+          <td>
+            <div class="fg-team">${esc(r.team)}</div>
+            ${compact ? "" : `<div class="fg-sub">${esc(r.manager)}</div>`}
+          </td>
+          <td>${esc(cap)}</td>
+          <td>${chip ? `<span class="fg-chip">${esc(String(chip).toUpperCase())}</span>` : ""}</td>
+          <td class="fg-num">${gwNet}</td>
+          <td class="fg-num"><b>${Number(r.total) || 0}</b></td>
+        </tr>`;
+      })
+      .join("");
+
+    html(
+      "fg-standings",
+      `<table class="fg-table">
+        <thead><tr><th class="fg-num">#</th><th>Team</th><th>Captain</th><th>Chip</th><th class="fg-num">GW</th><th class="fg-num">Total</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>`,
+    );
+  }
+
+  // ---------- Select team (the opponent or any team you click) ----------
+  function renderSelect(live) {
+    if (!st.selected) {
+      html("fg-select", `<p class="fg-empty">Click a team in the league to compare it with yours.</p>`);
+      return;
+    }
+    if (!st.selPicks) {
+      html("fg-select", `<p class="fg-empty">Loading team…</p>`);
+      return;
+    }
+    const squad = squadOf(st.selPicks);
+    const m = st.selMgr;
+    const pts = gwPointsOf(squad, live);
+    const name = m?.name ?? "Team";
+    const mgr = m?.playerName ?? "";
+    const rows = squad.xi.map((pk) => rowHtml(st.byId.get(pk.element), live, { pk, impText: "<span class=\"fg-net\">–</span>" })).join("");
+
+    html(
+      "fg-select",
+      `<div class="fg-kvs">
+        <div class="fg-kv"><span>Team</span><b>${esc(name)}</b></div>
+        <div class="fg-kv"><span>Manager</span><b>${esc(mgr)}</b></div>
+        <div class="fg-kv"><span>GW points</span><b>${pts}</b></div>
+      </div>
+      <div class="fg-scroll">
+        <table class="fg-table">
+          <thead><tr><th>Player</th><th>Status</th><th class="fg-num">Pts</th><th>Imp</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`,
+    );
+  }
+
+  // ---------- My feed: this gameweek's events for your starting XI ----------
+  function renderFeed(squad) {
+    const events = [];
+    for (const pk of squad.xi) {
+      const p = st.byId.get(pk.element);
+      const s = st.stats?.get(p?.id);
+      if (!p || !s) continue;
+      const fx = fixtureFor(p.team);
+      const when = fx?.kickoff ?? "";
+      const team = short(p.team);
+      const add = (label) => events.push({ when, player: p.web_name, team, label });
+
+      if (s.gs) add(s.gs > 1 ? `Goal ×${s.gs}` : "Goal");
+      if (s.a) add(s.a > 1 ? `Assist ×${s.a}` : "Assist");
+      if (s.bn) add(`${s.bn} bonus pts`);
+      if (s.yc) add(s.yc > 1 ? `Yellow ×${s.yc}` : "Yellow card");
+      if (s.rc) add("Red card");
+      if (s.og) add(s.og > 1 ? `Own goal ×${s.og}` : "Own goal");
+      if (s.cs && p.element_type <= 2) add("Clean sheet");
+    }
+
+    events.sort((a, b) => (b.when || "").localeCompare(a.when || ""));
+    html(
+      "fg-feed",
+      events.length
+        ? events
+            .map(
+              (e) => `<div class="fg-feed-row">
+                <span class="fg-time">${esc(kickoffLabel(e.when))}</span>
+                <div><div class="fg-name">${esc(e.player)}</div><div class="fg-sub">${esc(e.team)}</div></div>
+                <span class="fg-event">${esc(e.label)}</span>
+              </div>`,
+            )
+            .join("")
+        : `<p class="fg-empty">No events yet this gameweek.</p>`,
+    );
+  }
+
+  // ---------- Matches for this gameweek ----------
+  function renderMatches() {
+    const fx = fixturesForGw().sort((a, b) => (a.kickoff ?? "~").localeCompare(b.kickoff ?? "~"));
+    if (!fx.length) {
+      html("fg-matches", `<p class="fg-empty">No fixtures found.</p>`);
+      return;
+    }
+    const row = (f) => {
+      const score = f.started ? `${f.home_score ?? 0} - ${f.away_score ?? 0}` : "? - ?";
+      const tag = f.finished ? `<span class="fg-tag is-done">Done (P)</span>` : f.started ? `<span class="fg-tag is-live">Live</span>` : `<span class="fg-tag">${esc(kickoffLabel(f.kickoff))}</span>`;
+      return `<div class="fg-match">
+        <span class="fg-mhome">${esc(short(f.home))}</span>
+        <span class="fg-score">${esc(score)}</span>
+        <span class="fg-maway">${esc(short(f.away))}</span>
+        ${tag}
+      </div>`;
+    };
+    const played = fx.filter((f) => f.started);
+    const upcoming = fx.filter((f) => !f.started);
+    html(
+      "fg-matches",
+      `${played.length ? `<div class="fg-group">Live / Finished</div>${played.map(row).join("")}` : ""}
+       ${upcoming.length ? `<div class="fg-group">Upcoming</div>${upcoming.map(row).join("")}` : ""}`,
+    );
+  }
+
+  // ---------- League selector and gameweek selector ----------
+  function renderSelectors() {
+    html(
+      "fg-league",
+      st.leagues.map((l) => `<option value="${l.id}"${String(l.id) === String(st.leagueId) ? " selected" : ""}>${esc(l.name)}</option>`).join(""),
+    );
+    html(
+      "fg-gw",
+      (st.snap?.events ?? [])
+        .map((ev) => `<option value="${ev.id}"${ev.id === st.gw ? " selected" : ""}>GW ${ev.id}</option>`)
+        .join(""),
+    );
   }
 
   // ---------- Drawing ----------
   function draw() {
-    set("mtl-updated", `Updated ${timeNow()}`);
-
-    if (!st.picks) {
-      set("mtl-note", "Your picks for this gameweek are not available yet.");
-    }
-
     const live = liveMap();
-    const states = clubStates();
-    const xi = st.picks ? st.picks.picks.filter((pk) => pk.position <= 11) : [];
-    const bench = st.picks
-      ? st.picks.picks.filter((pk) => pk.position > 11).sort((a, b) => a.position - b.position)
-      : [];
+    const squad = squadOf(st.picks);
+    if (!st.picks) set("fg-note", "Your picks for this gameweek are not available yet.");
+    else set("fg-note", "");
 
-    safe("Live rank", () => renderRank(xi, live, states));
-    safe("Player table", () => renderPlayerTable(xi, bench, live, states));
-    safe("Pitch", () => renderPitch(xi, bench, live, states));
+    safe("Header", () => renderHeader(squad, live));
+    safe("Table", () => renderTable(squad, live));
+    safe("Pitch", () => renderPitch(squad, live));
+    safe("Lower list", () => renderLower(squad, live));
     safe("Standings", renderStandings);
-    safe("Feed & Matches", () => renderFeedAndMatches(xi, live));
-    safe("Transfers", renderTransfers);
-    safe("Summary", () => renderSummary(xi, live));
+    safe("Select team", () => renderSelect(live));
+    safe("Feed", () => renderFeed(squad));
+    safe("Matches", renderMatches);
+    safe("Selectors", renderSelectors);
     applyPitchToggle();
   }
 
@@ -488,123 +507,168 @@
     }
   }
 
-  async function loadLeague(leagueId, gw) {
+  async function loadLeagues() {
     try {
-      return await api(`/league/${leagueId}?gw=${gw}`);
+      const { leagues } = await api("/me/leagues", { headers: { Authorization: `Bearer ${st.session.token}` } });
+      st.leagues = leagues?.length ? leagues.map((l) => ({ id: l.id, name: l.name })) : FALLBACK_LEAGUES;
     } catch {
-      return null;
+      st.leagues = FALLBACK_LEAGUES;
     }
+    if (!st.leagueId || !st.leagues.some((l) => String(l.id) === String(st.leagueId))) {
+      st.leagueId = st.leagues[0].id;
+    }
+  }
+
+  async function loadStandings() {
+    if (!st.leagueId) return;
+    try {
+      const data = await api(`/league/${st.leagueId}?page=1`);
+      st.leagueName = data.league ?? "";
+      st.rows = data.results ?? [];
+      const need = st.rows.map((r) => r.entry).filter((id) => !st.managersById.has(id));
+      for (let i = 0; i < need.length; i += 10) {
+        const batch = need.slice(i, i + 10);
+        const d = await api(`/managers?ids=${batch.join(",")}`).catch(() => null);
+        for (const m of d?.managers ?? []) st.managersById.set(m.entry, m);
+      }
+    } catch (err) {
+      st.rows = [];
+      set("fg-note", `Standings could not load. ${err.message}`);
+    }
+  }
+
+  async function loadSelected() {
+    if (!st.selected) return;
+    const id = st.selected;
+    st.selPicks = null;
+    st.selMgr = null;
+    draw();
+    const [picks, mgr] = await Promise.all([
+      api(`/picks/${id}/${st.gw}`).catch(() => null),
+      st.managersById.get(id) ?? api(`/managers?ids=${id}`).then((d) => d.managers?.[0] ?? null).catch(() => null),
+    ]);
+    if (st.selected !== id) return;
+    st.selPicks = picks;
+    st.selMgr = mgr ? { ...mgr, name: st.rows.find((r) => r.entry === id)?.team ?? "", playerName: st.rows.find((r) => r.entry === id)?.manager ?? "" } : null;
+    draw();
   }
 
   async function loadAll() {
     const auth = { headers: { Authorization: `Bearer ${st.session.token}` } };
-    const [meRes, picksRes, mgrRes, stats, leagueRes] = await Promise.all([
+    const [meRes, picksRes, mgrRes, stats] = await Promise.all([
       api("/me", auth),
       api(`/picks/${st.session.entryId}/${st.gw}`).catch(() => null),
       api(`/managers?ids=${st.session.entryId}`).catch(() => null),
       loadStats(st.gw),
-      loadLeague(st.leagueId, st.gw),
     ]);
     st.me = meRes.entry;
     st.picks = picksRes;
     st.mgr = mgrRes?.managers?.[0] ?? null;
     st.stats = stats;
-    st.league = leagueRes;
-    set("mtl-note", "");
+    await loadStandings();
     draw();
+    if (st.selected) await loadSelected();
   }
 
   async function refresh() {
-    set("mtl-note", "Refreshing…");
+    set("fg-note", "Refreshing…");
     try {
       await loadAll();
     } catch (err) {
       if (err.status === 401) return signOut();
-      set("mtl-note", `Could not load your team. ${err.message}`);
+      set("fg-note", `Could not load your team. ${err.message}`);
     }
   }
 
   // ---------- Wiring ----------
   function wire() {
-    $("mtl-names")?.addEventListener("change", (e) => {
-      $("mtl")?.classList.toggle("is-names-off", !e.target.checked);
-    });
-    $("mtl-refresh")?.addEventListener("click", refresh);
-
-    $("fplgw-pitch-toggle")?.addEventListener("change", (e) => {
-      st.pitchView = e.target.checked;
+    $("fg-pitch-toggle")?.addEventListener("change", (e) => {
+      st.pitch = e.target.checked;
       applyPitchToggle();
     });
 
-    $("fplgw-league-select")?.addEventListener("change", async (e) => {
+    $("fg-view")?.addEventListener("change", (e) => {
+      st.standingsView = e.target.value;
+      safe("Standings", renderStandings);
+    });
+
+    $("fg-league")?.addEventListener("change", async (e) => {
       st.leagueId = e.target.value;
-      st.league = await loadLeague(st.leagueId, st.gw);
+      st.managersById = new Map();
+      st.selected = null;
+      await loadStandings();
       safe("Standings", renderStandings);
+      safe("Selectors", renderSelectors);
     });
 
-    $("fplgw-gw-select")?.addEventListener("change", async (e) => {
-      const val = Number(e.target.value);
-      if (val) {
-        st.gw = val;
-        await refresh();
-      }
+    $("fg-gw")?.addEventListener("change", async (e) => {
+      const v = Number(e.target.value);
+      if (!v) return;
+      st.gw = v;
+      st.managersById = new Map();
+      await refresh();
     });
 
-    $("fplgw-view-mode")?.addEventListener("change", (e) => {
-      st.standingsMode = e.target.value;
-      safe("Standings", renderStandings);
+    $("fg-refresh")?.addEventListener("click", refresh);
+
+    $("fg-opp-btn")?.addEventListener("click", () => {
+      $("fg-select-col")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
-    const moreBtn = $("fplgw-more-btn");
-    const moreMenu = $("fplgw-more-menu");
+    const moreBtn = $("fg-more-btn");
+    const moreMenu = $("fg-more-menu");
     moreBtn?.addEventListener("click", () => {
       const open = moreMenu.hidden;
       moreMenu.hidden = !open;
       moreBtn.setAttribute("aria-expanded", String(open));
     });
-
-    moreMenu?.addEventListener("click", (e) => {
-      const btn = e.target.closest("button[data-action]");
-      if (!btn) return;
-      moreMenu.hidden = true;
-      moreBtn.setAttribute("aria-expanded", "false");
-      if (btn.dataset.action === "top") window.scrollTo({ top: 0, behavior: "smooth" });
-      if (btn.dataset.action === "standings") refresh();
-      if (btn.dataset.action === "summary") {
-        $("fplgw-extra-drawer")?.scrollIntoView({ behavior: "smooth" });
+    document.addEventListener("click", (e) => {
+      if (!moreMenu || moreMenu.hidden) return;
+      if (!e.target.closest(".fg-dd")) {
+        moreMenu.hidden = true;
+        moreBtn.setAttribute("aria-expanded", "false");
       }
     });
-  }
 
-  function populateGwSelect() {
-    const sel = $("fplgw-gw-select");
-    if (!sel || !st.snap?.events) return;
-    sel.innerHTML = st.snap.events
-      .map((ev) => `<option value="${ev.id}"${ev.id === st.gw ? " selected" : ""}>GW ${ev.id}</option>`)
-      .join("");
-  }
+    document.querySelectorAll(".fg-tab").forEach((b) =>
+      b.addEventListener("click", () => {
+        st.tab = b.dataset.tab;
+        safe("Lower list", () => renderLower(squadOf(st.picks), liveMap()));
+      }),
+    );
 
-  async function init() {
-    setNavCurrent();
-    populateGwSelect();
-    wire();
-
-    st.session = readSession();
-    if (!st.session) {
-      $("mtl-note").innerHTML = `Log in to see your team. <a href="/login">Log in</a>`;
-      return;
-    }
-
-    await refresh();
+    // Clicking a row in the league table opens that team in the Select team panel.
+    $("fg-standings")?.addEventListener("click", (e) => {
+      const row = e.target.closest("tr[data-entry]");
+      if (!row) return;
+      const id = Number(row.dataset.entry);
+      st.selected = id;
+      loadSelected();
+    });
 
     document.addEventListener("fpl:live", () => {
       if (st.me) safe("Live update", draw);
     });
   }
 
+  async function init() {
+    setNavCurrent();
+    wire();
+
+    st.session = readSession();
+    if (!st.session) {
+      set("fg-note", "");
+      html("fg-note", `Log in to see your team. <a href="/login">Log in</a>`);
+      return;
+    }
+
+    await loadLeagues();
+    await refresh();
+  }
+
   readyP.then((snap) => {
     if (!snap) {
-      set("mtl-note", "Could not load data. Try again shortly.");
+      set("fg-note", "Could not load data. Try again shortly.");
       return;
     }
     st.snap = snap;
